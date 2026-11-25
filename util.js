@@ -40,9 +40,9 @@ const U = (() => {
   // Tipos de día. css = color en la app; viaje: true = días en otra localidad (color lila)
   const TIPOS = {
     normal: { label: 'Jornada normal', css: '' },
-    viaje: { label: 'Viaje (ida, o ida y vuelta)', corto: 'Viaje', css: 'viaje', viaje: true },
+    viaje: { label: 'Viaje de ida', corto: 'Viaje de ida', css: 'viaje', viaje: true },
+    regreso: { label: 'Viaje de vuelta', corto: 'Viaje de vuelta', css: 'viaje', viaje: true },
     otra: { label: 'Jornada en otra localidad', corto: 'Otra localidad', css: 'viaje', viaje: true },
-    regreso: { label: 'Viaje de regreso', corto: 'Regreso', css: 'viaje', viaje: true },
     extra: { label: 'Trabajo en día libre', css: 'extra' },
     vacaciones: { label: 'Vacaciones', css: 'libre', obs: 'VACACIONES' },
     feriado: { label: 'Feriado', css: 'libre', obs: 'FERIADO' },

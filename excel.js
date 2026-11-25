@@ -33,7 +33,7 @@ const XL = (() => {
     let obs = (r.obs || '').trim();
     if (!obs && svcs && svcs.length) obs = svcs.map(v => [v.equipo, v.tareas].filter(Boolean).join(': ')).join(' / ');
     if (r.feriado && !/feriado/i.test(obs)) obs = `Feriado trabajado${r.feriadoNombre ? ' (' + r.feriadoNombre + ')' : ''}` + (obs ? '. ' + obs : '');
-    if (r.tipo === 'regreso' && !/regreso/i.test(obs)) obs = 'Regreso' + (obs ? '. ' + obs : '');
+    if (r.tipo === 'regreso' && !/regreso|vuelta/i.test(obs)) obs = 'Vuelta desde ' + (r.localidad || 'viaje') + (obs ? '. ' + obs : '');
     if (r.tipo === 'otra' && !obs) obs = 'Jornada en ' + (r.localidad || 'otra localidad');
     out.obs = obs;
     return out;
