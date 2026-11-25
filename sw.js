@@ -1,5 +1,5 @@
 // Service worker: guarda la app en el celu para que funcione sin internet.
-const VERSION = 'pharmapp-v1';
+const VERSION = 'pharmapp-v2';
 const FILES = [
   './', 'index.html', 'styles.css', 'app.js', 'util.js', 'db.js', 'excel.js', 'drive.js',
   'manifest.webmanifest', 'vendor/exceljs.min.js', 'vendor/jszip.min.js',

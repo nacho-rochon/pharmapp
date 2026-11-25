@@ -68,7 +68,9 @@ function out(o) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(Object.assign({ token: cfg.driveToken }, body))
     });
-    const j = await res.json();
+    const txt = await res.text();
+    let j;
+    try { j = JSON.parse(txt); } catch (e) { throw new Error('json: Google devolvió una página en vez de responder (revisá quién tiene acceso)'); }
     if (!j.ok) throw new Error(j.error === 'token' ? 'El código secreto no coincide con el del script' : (j.error || 'Error de Drive'));
     return j;
   }

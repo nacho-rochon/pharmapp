@@ -76,3 +76,4 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);border-colo
 .hr{height:1px;background:var(--line);margin:12px 0}
 .empty{text-align:center;color:var(--mute);padding:24px 8px}
 pre.code{white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;max-height:200px;overflow:auto}
+.banner.hidden{display:none}

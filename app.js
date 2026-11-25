@@ -572,7 +572,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v1 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v2 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
@@ -591,12 +591,13 @@
       <ol style="padding-left:20px;margin:8px 0">
         <li>Entrá a <b>script.google.com</b> con tu cuenta de Google y tocá <b>Nuevo proyecto</b>.</li>
         <li>Borrá lo que hay y pegá el código de abajo (botón Copiar). Guardá.</li>
-        <li>Arriba a la derecha: <b>Implementar → Nueva implementación → Aplicación web</b>. "Ejecutar como": <b>Yo</b>. "Quién tiene acceso": <b>Cualquier usuario</b>. Implementar y aceptar los permisos.</li>
+        <li>Arriba a la derecha: <b>Implementar → Nueva implementación → Aplicación web</b>. "Ejecutar como": <b>Yo</b>. "Quién tiene acceso": <b>Cualquier usuario</b> (ojo: no "con cuenta de Google"). Implementar y aceptar los permisos (si dice "Google no verificó esta app", tocá Configuración avanzada → Ir a … y Permitir).</li>
         <li>Copiá la <b>URL de la aplicación web</b> y pegala acá abajo.</li></ol>
       <pre class="code">${E(code)}</pre>
       <div class="btns two"><button class="btn" data-act="copyScript">📋 Copiar código</button><button class="btn" data-act="shareScript">📤 Enviarme el código</button></div>
       <label>URL de la aplicación web</label><input id="dUrl" value="${E(S.cfg.driveUrl)}" placeholder="https://script.google.com/macros/s/…/exec">
       <div class="btns"><button class="btn pri big" data-act="saveDrive">Guardar y probar</button></div>
+      <div id="dErr" class="banner bad hidden" style="margin-top:10px"></div>
       <div class="mute small">El código lleva una clave secreta propia de este celu para que nadie más pueda subir archivos a tu Drive.</div>`);
   }
 
@@ -716,9 +717,24 @@
     copyScript: async () => { try { await navigator.clipboard.writeText(Drive.scriptCode(S.cfg.driveToken, S.cfg.driveRoot)); toast('Código copiado ✓'); } catch (e) { toast('No se pudo copiar; usá "Enviarme el código"'); } },
     shareScript: async () => { const t = Drive.scriptCode(S.cfg.driveToken, S.cfg.driveRoot); if (navigator.share) { try { await navigator.share({ title: 'Código Pharmapp Drive', text: t }); } catch (e) { } } else downloadBlob(new Blob([t], { type: 'text/plain' }), 'pharmapp-drive.gs.txt'); },
     saveDrive: async () => {
-      S.cfg.driveUrl = val('dUrl'); await saveCfg();
+      const url = val('dUrl');
+      if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(url)) {
+        return toast(/\/dev$/.test(url) ? 'Esa es la URL de prueba (/dev). Usá la de "Nueva implementación", que termina en /exec' : 'La URL tiene que empezar con https://script.google.com/ y terminar en /exec', 6000);
+      }
+      S.cfg.driveUrl = url; await saveCfg();
       try { await Drive.call(S.cfg, { action: 'ping' }); closeSheet(); toast('✅ Drive conectado'); syncSoon(100); render(); }
-      catch (e) { toast('No se pudo conectar: ' + e.message, 5000); }
+      catch (e) {
+        const box = document.getElementById('dErr');
+        const msg = /fetch|network|json/i.test(e.message)
+          ? `<b>Google no dejó conectar.</b> Casi siempre es por la configuración de la implementación:<ol style="padding-left:20px;margin:6px 0">
+             <li>En el script: <b>Implementar → Gestionar implementaciones → ✏️ editar</b>.</li>
+             <li>"Ejecutar como": <b>Yo</b>. "Quién tiene acceso": <b>Cualquier usuario</b> (no "Cualquier usuario con cuenta de Google").</li>
+             <li>En "Versión" elegí <b>Nueva versión</b> e Implementar.</li></ol>
+             Para revisarlo, abrí la URL en el navegador: si ves <code>{"ok":true,"app":"pharmapp"}</code> está bien; si te pide iniciar sesión o permisos, falta el paso 2.
+             <a class="btn" style="margin-top:8px" href="${E(url)}" target="_blank" rel="noopener">Abrir la URL para revisar</a>`
+          : E(e.message);
+        if (box) { box.innerHTML = msg; box.classList.remove('hidden'); } else toast('No se pudo conectar: ' + e.message, 6000);
+      }
     },
     syncNow: () => { if (!navigator.onLine) return toast('Sin internet'); Drive.sync(S.cfg, describePhoto, backupData).then(render); },
     testDrive: async () => { try { await Drive.call(S.cfg, { action: 'ping' }); toast('✅ Conexión OK'); } catch (e) { toast('Error: ' + e.message, 5000); } },
