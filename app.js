@@ -104,6 +104,12 @@
       const n = (await photosOf(v.id)).findIndex(x => x.id === p.id) + 1;
       return { folder: `${root}${P.key} ${P.mesFin}/Services`, name: U.safe(`${v.fecha} ${v.cliente || ''} ${v.equipo || ''} hoja ${n}`) + '.jpg' };
     }
+    if (p.kind === 'estudio') {
+      const d = p.refId.slice(4);
+      const P = U.periodRange(U.periodOf(d, S.cfg.cierre), S.cfg.cierre);
+      const n = (await photosOf(p.refId)).findIndex(x => x.id === p.id) + 1;
+      return { folder: `${P.key} ${P.mesFin}/Licencias por estudio`, name: `${d} licencia por estudio ${n}.jpg` };
+    }
     if (p.kind === 'ticket') {
       const x = await DB.get('expenses', p.refId); if (!x) return null;
       const t = await DB.get('trips', x.tripId); if (!t) return null;
@@ -136,11 +142,22 @@
   // =====================================================================
   // PESTAÑA DÍA
   // =====================================================================
+  // Color de un día en las listas: lila si estuvo de viaje u otra localidad, naranja si hizo horas extra
+  function dayClass(rec, s) {
+    if (!rec) return '';
+    const T = U.TIPOS[rec.tipo] || {};
+    if (T.viaje) return 'rv';
+    if (U.calcDay(rec, s, S.cfg).extra > 0) return 'rx';
+    return '';
+  }
   function dayStatus(rec, s) {
     if (!rec) return U.isWeekend(s) ? '<span class="status libre">fin de semana</span>' : (s <= U.today() ? '<span class="status falta">sin cargar</span>' : '<span class="status libre">—</span>');
-    const t = U.TIPOS[rec.tipo];
-    const hs = rec.inicio && rec.fin ? ` ${rec.inicio}–${rec.fin}` : '';
-    return `<span class="status ${t.css}">${E(t.label)}${hs}</span>`;
+    const t = U.TIPOS[rec.tipo] || U.TIPOS.normal;
+    const { inicio, fin } = U.times(rec);
+    const hs = inicio && fin ? ` ${inicio}–${fin}` : '';
+    const ex = U.calcDay(rec, s, S.cfg).extra;
+    const css = t.viaje ? 'viaje' : (ex > 0 ? 'extra' : t.css);
+    return `<span class="status ${css}">${E(t.corto || t.label)}${rec.feriado ? ' (feriado)' : ''}${hs}${ex > 0 ? ` · +${U.fmtHs(ex)}` : ''}</span>`;
   }
   async function viewDia() {
     const s = S.day, rec = await DB.get('days', s);
@@ -153,6 +170,7 @@
     let h = '';
     if (!S.cfg.empleado) h += `<div class="banner warn">👋 Primero completá tu nombre en <a href="#" data-act="tab" data-tab="mas">Más → Ajustes</a> para que salga en las planillas.</div>`;
     if (S.installEvt) h += `<div class="banner ok">📲 Podés instalar Pharmapp en el celu. <button class="btn pri" style="margin-top:8px" data-act="install">Instalar app</button></div>`;
+    if (S.feriadosNuevos && S.feriadosNuevos.length) h += `<div class="banner ok">📅 Encontré ${S.feriadosNuevos.length} feriado(s) nacional(es) para marcar. <button class="btn pri" style="margin-top:8px" data-act="showFeriados">Revisar feriados</button></div>`;
     for (const t of sinSaldo) h += `<div class="banner warn">💳 <b>Anotá el saldo de la VISA</b> antes de salir a ${E(t.localidad || 'viaje')}. <a href="#" data-act="openTrip" data-id="${t.id}">Anotar ahora</a></div>`;
     h += `<div class="daynav"><button data-act="dayPrev" aria-label="Día anterior">‹</button>
       <label class="d" style="margin:0"><b>${E(U.largo(s))}</b><span class="mute small">${s === U.today() ? 'hoy · ' : ''}toca para cambiar</span>
@@ -161,15 +179,23 @@
     if (!rec) {
       h += `<div class="btns">
         <button class="btn ok big" data-act="quickNormal">✅ Jornada normal ${S.cfg.inicio} a ${S.cfg.fin}</button>
-        <button class="btn pri big" data-act="editDay" data-tipo="viaje">🚗 Día de viaje</button>
+        <div class="btns three" style="margin:0">
+          <button class="btn pri" data-act="editDay" data-tipo="viaje">🚗 Viaje de ida</button>
+          <button class="btn pri" data-act="editDay" data-tipo="otra">📍 Otra localidad</button>
+          <button class="btn pri" data-act="editDay" data-tipo="regreso">🏠 Regreso</button></div>
         <button class="btn" data-act="editDay" data-tipo="${U.isWeekend(s) ? 'extra' : 'normal'}">🕒 Otro horario / horas extra</button></div>
         <div class="chips" style="margin-top:10px">
-        ${['vacaciones', 'feriado', 'franco', 'licencia'].map(t => `<button class="chip" data-act="quickTipo" data-tipo="${t}">${U.TIPOS[t].label}</button>`).join('')}</div>`;
+        ${['vacaciones', 'feriado', 'franco', 'licencia'].map(t => `<button class="chip" data-act="quickTipo" data-tipo="${t}">${U.TIPOS[t].label}</button>`).join('')}
+        <button class="chip" data-act="editDay" data-tipo="estudio">🎓 Licencia por estudio</button></div>`;
     } else {
-      h += `<div class="card">${dayStatus(rec, s)}
-        ${rec.tipo === 'viaje' ? `<div style="margin-top:8px"><b>${E(rec.localidad || '')}</b> ${rec.km ? `· ${rec.km} km` : ''} ${rec.cliente ? `· ${E(rec.cliente)}` : ''}<div class="mute small">Salida ${E(rec.salida || '—')} · Llegada ${E(rec.llegada || '—')}</div></div>` : ''}
+      const ph = rec.tipo === 'estudio' ? await photosOf('day:' + s) : [];
+      const T = U.TIPOS[rec.tipo] || {};
+      h += `<div class="card ${dayClass(rec, s)}">${dayStatus(rec, s)}
+        ${T.viaje ? `<div style="margin-top:8px"><b>${rec.tipo === 'regreso' ? 'Desde ' : ''}${E(rec.localidad || '')}</b> ${rec.km && rec.tipo !== 'otra' ? `· ${rec.km} km` : ''} ${rec.cliente ? `· ${E(rec.cliente)}` : ''}
+          ${U.VIAJA.includes(rec.tipo) ? `<div class="mute small">Salida ${E(rec.salida || '—')} · Llegada ${E(rec.llegada || '—')}</div>` : ''}</div>` : ''}
         ${calc.extra > 0 ? `<div style="margin-top:8px" class="status extra">+${U.fmtHs(calc.extra)} hs extra</div>` : ''}
         ${rec.obs ? `<div style="margin-top:8px">${E(rec.obs)}</div>` : ''}
+        ${rec.tipo === 'estudio' ? `<div class="thumbs">${thumbsHTML(ph, []).replace(/<button class="x"[^>]*>×<\/button>/g, '')}</div>${ph.length ? '' : '<div class="banner warn" style="margin:8px 0 0">Falta la foto del comprobante de la universidad.</div>'}` : ''}
         <div class="btns two"><button class="btn" data-act="editDay">✏️ Editar</button><button class="btn bad" data-act="delDay">Borrar</button></div></div>`;
     }
     h += `<h3>Services de este día</h3><div class="card">${svcs.length ? `<ul class="list">${svcs.map(v => `<li data-act="editService" data-id="${v.id}"><div class="grow"><div class="t">${E(v.cliente || 'Sin cliente')}</div><div class="s">${E([v.equipo, v.tipo].filter(Boolean).join(' · '))}</div></div>›</li>`).join('')}</ul>` : '<div class="mute">Ninguno todavía.</div>'}
@@ -178,7 +204,7 @@
     const pend = P.days.filter(d => d <= U.today() && !dm[d] && !U.isWeekend(d));
     h += `<h3>Período ${U.ddmm(P.start)} al ${U.ddmm(P.end)}</h3>`;
     if (pend.length) h += `<div class="banner warn">Hay ${pend.length} día(s) hábiles sin cargar. <button class="btn" style="margin-top:8px" data-act="fillPending">Marcar todos como jornada normal</button></div>`;
-    h += `<div class="card"><ul class="list">${P.days.slice().reverse().filter(d => d <= U.addDays(U.today(), 7)).map(d => `<li data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div></div>${dayStatus(dm[d], d)}</li>`).join('')}</ul></div>`;
+    h += `<div class="card"><ul class="list">${P.days.slice().reverse().filter(d => d <= U.addDays(U.today(), 7)).map(d => `<li class="${dayClass(dm[d], d)}" data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div></div>${dayStatus(dm[d], d)}</li>`).join('')}</ul></div>`;
     return h;
   }
   async function editDay(tipo) {
@@ -189,42 +215,49 @@
     const opts = clientOptions(cl);
     const openTrips = (await trips()).filter(x => x.estado !== 'cerrado' || (x.desde <= s && (x.hasta || x.desde) >= s));
     const r = Object.assign({ inicio: S.cfg.inicio, fin: S.cfg.fin }, rec);
+    // si viene de otro tipo, sugerimos la localidad del día anterior (útil para "otra localidad" y "regreso")
+    if (!rec.localidad) { const prev = await DB.get('days', U.addDays(s, -1)); if (prev && prev.localidad) { r.localidad = prev.localidad; r.km = prev.km; r.cliente = prev.cliente; r.tripId = prev.tripId; } }
+    currentRefId = 'day:' + s;
+    const ph = await photosOf(currentRefId);
+    pendingPhotos = [];
     openSheet(U.largo(s), `
       <label>Tipo de día</label>
       <select id="dTipo">${Object.entries(U.TIPOS).map(([k, v]) => `<option value="${k}" ${k === t ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
-      <div id="dTimes"><div class="grid2"><div><label>Inicio jornada</label><input type="time" id="dIni" value="${E(r.inicio || '')}"></div>
-      <div><label>Fin jornada</label><input type="time" id="dFin" value="${E(r.fin || '')}"></div></div></div>
       <div id="dViaje">
         ${openTrips.length ? `<label>Viaje (rendición de gastos)</label><select id="dTrip"><option value="">— ninguno —</option>${openTrips.map(x => `<option value="${x.id}" ${x.id === r.tripId ? 'selected' : ''}>${E(tripName(x))}</option>`).join('')}</select>` : ''}
-        <label>Localidad</label><select id="dLoc"><option value="">— elegir —</option>${cl.map(c => `<option value="${E(c.localidad)}" data-km="${c.km ?? ''}" ${c.localidad === r.localidad ? 'selected' : ''}>${E(c.localidad)} (${c.km ?? '?'} km)</option>`).join('')}
+        <label id="dLocLbl">Localidad</label><select id="dLoc"><option value="">— elegir —</option>${cl.map(c => `<option value="${E(c.localidad)}" data-km="${c.km ?? ''}" ${c.localidad === r.localidad ? 'selected' : ''}>${E(c.localidad)} (${c.km ?? '?'} km)</option>`).join('')}
           ${r.localidad && !cl.some(c => c.localidad === r.localidad) ? `<option selected>${E(r.localidad)}</option>` : ''}</select>
-        <div class="grid2"><div><label>Km</label><input inputmode="numeric" id="dKm" value="${E(r.km ?? '')}"></div>
+        <div class="grid2"><div id="dKmBox"><label>Km</label><input inputmode="numeric" id="dKm" value="${E(r.km ?? '')}"></div>
         <div><label>Cliente / lugar</label><input id="dCli" list="dlCli" value="${E(r.cliente || '')}"></div></div>
         <datalist id="dlCli">${opts.map(o => `<option value="${E(o.nombre)}">${E(o.localidad)}</option>`).join('')}</datalist>
-        <div class="grid2"><div><label>Hora de salida</label><input type="time" id="dSal" value="${E(r.salida || r.inicio || S.cfg.inicio)}"></div>
-        <div><label>Hora de llegada</label><input type="time" id="dLle" value="${E(r.llegada || '')}"></div></div>
-        <div class="mute small" style="margin-top:6px">Si volvés más tarde de las ${S.cfg.fin}, el fin de jornada se ajusta solo a la llegada (podés cambiarlo).</div>
       </div>
-      <label>Observaciones (qué hiciste)</label><textarea id="dObs" placeholder="Ej: cambio de jeringas AU700, mapeo de aguja DxH900">${E(rec.obs || '')}</textarea>
+      <div id="dViajaBox"><div class="grid2"><div><label>Hora de salida</label><input type="time" id="dSal" value="${E(r.salida || S.cfg.inicio)}"></div>
+        <div><label>Hora de llegada</label><input type="time" id="dLle" value="${E(r.llegada || '')}"></div></div>
+        <div class="mute small" style="margin-top:6px">La jornada de un día de viaje va de la hora de salida a la de llegada.</div></div>
+      <div id="dTimes"><div class="grid2"><div><label>Inicio jornada</label><input type="time" id="dIni" value="${E(r.inicio || '')}"></div>
+        <div><label>Fin jornada</label><input type="time" id="dFin" value="${E(r.fin || '')}"></div></div></div>
+      <div id="dEstudio"><label>Comprobante de la universidad</label>
+        <div class="btns two"><button class="btn pri" data-act="addPhoto" data-cam="1">📷 Sacar foto</button><button class="btn" data-act="addPhoto">🖼️ Galería</button></div>
+        <div class="thumbs" id="thumbs">${thumbsHTML(ph, [])}</div></div>
+      <label>Observaciones</label><textarea id="dObs" placeholder="Ej: cambio de jeringas AU700, mapeo de aguja DxH900">${E(rec.obs || '')}</textarea>
       <div id="dCalc" class="mute small" style="margin-top:6px"></div>
       <div class="btns"><button class="btn pri big" data-act="saveDay">Guardar</button></div>`, box => {
+      const show = (id, on) => { box.querySelector(id).style.display = on ? '' : 'none'; };
       const upd = () => {
         const tp = val('dTipo');
-        box.querySelector('#dViaje').style.display = tp === 'viaje' ? '' : 'none';
-        box.querySelector('#dTimes').style.display = U.SIN_TRABAJO.includes(tp) ? 'none' : '';
-        const c = U.calcDay({ tipo: tp, inicio: val('dIni'), fin: val('dFin') }, s, S.cfg);
+        const T = U.TIPOS[tp];
+        show('#dViaje', T.viaje); show('#dKmBox', U.VIAJA.includes(tp)); show('#dViajaBox', U.VIAJA.includes(tp));
+        show('#dTimes', !U.VIAJA.includes(tp) && !U.SIN_TRABAJO.includes(tp)); show('#dEstudio', tp === 'estudio');
+        box.querySelector('#dLocLbl').textContent = tp === 'regreso' ? 'Regreso desde (localidad)' : tp === 'viaje' ? 'Localidad de destino' : 'Localidad';
+        const c = U.calcDay({ tipo: tp, inicio: val('dIni'), fin: val('dFin'), salida: val('dSal'), llegada: val('dLle') }, s, S.cfg);
         box.querySelector('#dCalc').textContent = c.dur ? `Total ${U.fmtHs(c.dur)} hs${c.extra ? ` · ${U.fmtHs(c.extra)} hs extra` : ''}` : '';
       };
       box.querySelector('#dTipo').onchange = upd;
-      box.querySelector('#dIni').oninput = upd; box.querySelector('#dFin').oninput = upd;
+      for (const id of ['#dIni', '#dFin', '#dSal', '#dLle']) box.querySelector(id).oninput = upd;
       box.querySelector('#dLoc').onchange = e => {
         const o = e.target.selectedOptions[0]; if (o && o.dataset.km) box.querySelector('#dKm').value = o.dataset.km;
         const c = cl.find(x => x.localidad === e.target.value);
         if (c && !val('dCli')) box.querySelector('#dCli').value = String(c.clientes || '').split(',')[0].trim();
-      };
-      box.querySelector('#dLle').onchange = e => {
-        const ll = e.target.value; if (!ll) return;
-        if (U.toMin(ll) > U.toMin(S.cfg.fin) || U.toMin(ll) < U.toMin(val('dIni') || S.cfg.inicio)) { box.querySelector('#dFin').value = ll; upd(); }
       };
       const tr = box.querySelector('#dTrip');
       if (tr) tr.onchange = async () => {
@@ -237,14 +270,23 @@
   }
   async function saveDay() {
     const tipo = val('dTipo');
-    const rec = { date: S.day, tipo, updated: Date.now() };
-    if (!U.SIN_TRABAJO.includes(tipo)) { rec.inicio = val('dIni'); rec.fin = val('dFin'); }
-    if (tipo === 'viaje') {
-      Object.assign(rec, { localidad: val('dLoc'), km: U.num(val('dKm')), cliente: val('dCli'), salida: val('dSal'), llegada: val('dLle'), tripId: val('dTrip') || null });
+    const T = U.TIPOS[tipo];
+    const rec = { date: S.day, tipo, updated: Date.now(), obs: val('dObs') };
+    if (U.VIAJA.includes(tipo)) {
+      Object.assign(rec, { salida: val('dSal'), llegada: val('dLle'), km: U.num(val('dKm')) });
+      if (!rec.salida || !rec.llegada) return toast('Completá hora de salida y de llegada');
+    } else if (!U.SIN_TRABAJO.includes(tipo)) {
+      Object.assign(rec, { inicio: val('dIni'), fin: val('dFin') });
+      if (!rec.inicio || !rec.fin) return toast('Completá inicio y fin de jornada');
     }
-    rec.obs = val('dObs');
-    if (!U.SIN_TRABAJO.includes(tipo) && (!rec.inicio || !rec.fin)) return toast('Completá inicio y fin de jornada');
-    await DB.put('days', rec); closeSheet(); toast('Día guardado ✓'); render();
+    if (T.viaje) {
+      Object.assign(rec, { localidad: val('dLoc'), cliente: val('dCli'), tripId: val('dTrip') || null });
+      if (!rec.localidad) return toast('Elegí la localidad');
+    }
+    await DB.put('days', rec);
+    if (tipo === 'estudio') await storePhotos('estudio', 'day:' + S.day);
+    const sinFoto = tipo === 'estudio' && !(await photosOf('day:' + S.day)).length;
+    closeSheet(); toast(sinFoto ? '⚠️ Guardado. Falta la foto del comprobante' : 'Día guardado ✓', 3500); render();
   }
 
   // =====================================================================
@@ -374,15 +416,19 @@
   async function tripDays(id) {
     const t = await DB.get('trips', id);
     const cl = (await clients()).find(c => c.localidad === t.localidad);
+    const fin = t.hasta || t.desde;
     let n = 0;
-    for (let s = t.desde; s <= (t.hasta || t.desde); s = U.addDays(s, 1)) {
+    for (let s = t.desde; s <= fin; s = U.addDays(s, 1)) {
       const old = await DB.get('days', s);
       if (old && old.tipo !== 'normal') continue; // no pisamos lo que ya cargaste a mano
-      await DB.put('days', { date: s, tipo: 'viaje', inicio: S.cfg.inicio, fin: S.cfg.fin, salida: s === t.desde ? S.cfg.inicio : '', llegada: '',
-        localidad: t.localidad, km: cl ? cl.km : null, cliente: t.cliente || '', tripId: id, obs: old ? old.obs || '' : '', updated: Date.now() });
+      const tipo = s === t.desde ? 'viaje' : (s === fin ? 'regreso' : 'otra');
+      const rec = { date: s, tipo, localidad: t.localidad, cliente: t.cliente || '', tripId: id, obs: old ? old.obs || '' : '', updated: Date.now() };
+      if (tipo === 'otra') Object.assign(rec, { inicio: S.cfg.inicio, fin: S.cfg.fin });
+      else Object.assign(rec, { km: cl ? cl.km : null, salida: tipo === 'viaje' ? S.cfg.inicio : '', llegada: tipo === 'viaje' && t.desde === fin ? '' : (tipo === 'viaje' ? S.cfg.fin : '') });
+      await DB.put('days', rec);
       n++;
     }
-    toast(n ? `${n} día(s) cargados como viaje. Revisá la hora de llegada en la pestaña Día.` : 'Esos días ya estaban cargados', 4000);
+    toast(n ? `${n} día(s) cargados: ida, días en ${t.localidad || 'la localidad'} y regreso. Completá las horas de salida y llegada en la pestaña Día.` : 'Esos días ya estaban cargados', 5000);
   }
   async function tripZip(id) {
     const t = await DB.get('trips', id);
@@ -516,9 +562,9 @@
     h += `<div class="btns"><button class="btn pri big" data-act="genHoras">📊 Generar reporte (planilla de horas)</button>
       <button class="btn" data-act="zipMes">🗂️ Carpeta de cierre del mes (.zip)</button>
       ${Drive.configured(S.cfg) ? '<button class="btn" data-act="driveMes">☁️ Guardar cierre en Drive</button>' : ''}</div>`;
-    h += `<h3>Vista previa</h3><div class="card"><ul class="list">${rows.map(r => `<li data-act="goDay" data-d="${r.date}"><div class="grow"><div class="t">${U.DIAS[U.dow(r.date)]} ${U.ddmm(r.date)} ${r.viaje === 'SI' ? '🚗' : ''}</div>
+    h += `<h3>Vista previa</h3><div class="card"><ul class="list">${rows.map(r => `<li class="${dayClass(dm[r.date], r.date)}" data-act="goDay" data-d="${r.date}"><div class="grow"><div class="t">${U.DIAS[U.dow(r.date)]} ${U.ddmm(r.date)} ${r.viaje === 'SI' ? '🚗' : (r.tipo === 'otra' ? '📍' : '')}</div>
       <div class="s">${r.inicio ? `${r.inicio}–${r.fin}` : ''}${r.localidad ? ' · ' + E(r.localidad) : ''}${r.obs ? ' · ' + E(r.obs) : ''}${r.auto ? ' · (auto)' : ''}</div></div>
-      ${r.extra ? `<span class="status extra">+${U.fmtHs(r.extra)}</span>` : (r.missing && !r.auto ? '<span class="status falta">vacío</span>' : '')}</li>`).join('')}</ul></div>`;
+      ${r.extra ? `<span class="status ${U.TIPOS[r.tipo] && U.TIPOS[r.tipo].viaje ? 'viaje' : 'extra'}">+${U.fmtHs(r.extra)}</span>` : (r.missing && !r.auto ? '<span class="status falta">vacío</span>' : '')}</li>`).join('')}</ul></div>`;
     return h;
   }
   async function genHoras() {
@@ -536,6 +582,7 @@
     f.file(h.filename, h.buffer);
     const svcs = (await DB.all('services')).filter(v => v.fecha >= P.start && v.fecha <= P.end).sort((a, b) => a.fecha.localeCompare(b.fecha));
     await addServicesToZip(f.folder('Services'), svcs, `Resumen services ${P.mesFin} ${P.year}`);
+    for (const d of P.days) for (const p of await photosOf('day:' + d)) { const x = await describePhoto(p); f.folder('Licencias por estudio').file(x ? x.name : p.id + '.jpg', p.blob); }
     const trs = (await trips()).filter(t => t.desde >= P.start && t.desde <= P.end);
     for (const t of trs) {
       const tf = f.folder('Viajes').folder(U.safe(`${t.desde} ${t.localidad || ''} - ${t.motivo || ''}`));
@@ -564,7 +611,7 @@
       <div><label>Jornada desde</label><input type="time" id="cIni" value="${E(c.inicio)}"></div><div><label>Jornada hasta</label><input type="time" id="cFin" value="${E(c.fin)}"></div>
       <div><label>Día de cierre del período</label><input inputmode="numeric" id="cCie" value="${E(c.cierre)}"></div><div><label>Sigla sucursal (archivo)</label><input id="cSig" value="${E(c.sucursalCorta)}"></div></div>
       <label style="display:flex;gap:10px;align-items:center;color:var(--ink)"><input type="checkbox" id="cPre" style="width:22px;height:22px" ${c.prefijoExtra ? 'checked' : ''}> Anteponer "X hs extra:" en observaciones</label>
-      <div class="btns"><button class="btn pri" data-act="saveCfg">Guardar ajustes</button></div></div>`;
+      <div class="btns"><button class="btn pri" data-act="saveCfg">Guardar ajustes</button><button class="btn" data-act="checkFeriados">📅 Buscar feriados nacionales ahora</button></div></div>`;
     h += `<h2>Respaldo en Google Drive</h2><div class="card">
       ${Drive.configured(c) ? `<div class="banner ${st.lastError ? 'bad' : 'ok'}">${st.lastError ? '⚠️ ' + E(st.lastError) : '✅ Conectado.'} Fotos en cola: ${st.pending}.</div>
         <div class="btns two"><button class="btn pri" data-act="syncNow">Subir ahora</button><button class="btn" data-act="testDrive">Probar conexión</button></div>`
@@ -572,7 +619,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v2 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v3 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
@@ -602,6 +649,68 @@
   }
 
   // =====================================================================
+  // FERIADOS NACIONALES (una vez por semana, con confirmación)
+  // =====================================================================
+  async function fetchFeriados(yr) {
+    try {
+      const r = await fetch(`https://api.argentinadatos.com/v1/feriados/${yr}`);
+      if (r.ok) return (await r.json()).map(x => ({ fecha: x.fecha, nombre: x.nombre, tipo: x.tipo || '' }));
+    } catch (e) { /* probamos la otra fuente */ }
+    const r = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${yr}/AR`);
+    if (!r.ok) throw new Error('sin respuesta');
+    return (await r.json()).map(x => ({ fecha: x.date, nombre: x.localName, tipo: '' }));
+  }
+  async function checkFeriados(force) {
+    if (!navigator.onLine) { if (force) toast('Sin internet: probá cuando tengas señal'); return; }
+    if (!force && Date.now() - (S.cfg.lastFeriados || 0) < 7 * 864e5) return;
+    const y = new Date().getFullYear();
+    let list = [];
+    for (const yr of [y, y + 1]) { try { list = list.concat(await fetchFeriados(yr)); } catch (e) { /* año todavía no publicado */ } }
+    if (!list.length) { if (force) toast('No pude consultar los feriados ahora'); return; }
+    S.cfg.lastFeriados = Date.now(); await saveCfg();
+    const desde = U.periodRange(U.periodOf(U.today(), S.cfg.cierre), S.cfg.cierre).start;
+    const dm = await daysMap();
+    const ign = S.cfg.feriadosIgnorados || [];
+    list = list.filter((f, i) => list.findIndex(x => x.fecha === f.fecha) === i);
+    S.feriadosNuevos = list.filter(f => f.fecha >= desde && !ign.includes(f.fecha) && !(dm[f.fecha] && (dm[f.fecha].tipo === 'feriado' || dm[f.fecha].feriado)))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+    if (force && !S.feriadosNuevos.length) toast('No hay feriados nuevos para marcar ✓');
+    if (S.tab === 'dia' || force) render();
+    if (force && S.feriadosNuevos.length) showFeriados();
+  }
+  async function showFeriados() {
+    const dm = await daysMap();
+    const list = S.feriadosNuevos || [];
+    openSheet('Feriados nacionales', `
+      <div class="mute">Marcá los que querés cargar. Los puentes turísticos vienen sin marcar porque dependen de la empresa.</div>
+      <div class="card" style="margin-top:10px"><ul class="list">${list.map((f, i) => {
+        const r = dm[f.fecha];
+        const trab = r && !U.SIN_TRABAJO.includes(r.tipo);
+        const puente = /puente/i.test(f.tipo);
+        return `<li><label style="display:flex;gap:10px;align-items:center;margin:0;color:var(--ink);font-size:15px;width:100%">
+          <input type="checkbox" class="ferChk" data-i="${i}" style="width:22px;height:22px;flex:none" ${puente ? '' : 'checked'}>
+          <span class="grow"><b>${U.DIAS[U.dow(f.fecha)]} ${U.ddmmyy(f.fecha)}</b> · ${E(f.nombre)}${puente ? ' <span class="mute small">(puente)</span>' : ''}
+          ${trab ? '<div class="mute small">Ya cargaste trabajo ese día: queda como feriado trabajado y todas las horas cuentan como extra.</div>' : ''}</span></label></li>`;
+      }).join('')}</ul></div>
+      <div class="btns two"><button class="btn ghost" data-act="ferLater">Ahora no</button><button class="btn pri" data-act="ferApply">Marcar seleccionados</button></div>`);
+  }
+  async function applyFeriados() {
+    const list = S.feriadosNuevos || [];
+    const ign = new Set(S.cfg.feriadosIgnorados || []);
+    let n = 0;
+    for (const el of document.querySelectorAll('.ferChk')) {
+      const f = list[Number(el.dataset.i)];
+      if (!el.checked) { ign.add(f.fecha); continue; }
+      const r = await DB.get('days', f.fecha);
+      if (r && !U.SIN_TRABAJO.includes(r.tipo)) { r.feriado = true; r.feriadoNombre = f.nombre; await DB.put('days', r); }
+      else await DB.put('days', { date: f.fecha, tipo: 'feriado', obs: (f.nombre || '').toUpperCase(), updated: Date.now() });
+      n++;
+    }
+    S.cfg.feriadosIgnorados = [...ign]; await saveCfg();
+    S.feriadosNuevos = []; closeSheet(); toast(`${n} feriado(s) cargados ✓`); render();
+  }
+
+  // =====================================================================
   // RENDER Y EVENTOS
   // =====================================================================
   async function render() {
@@ -621,6 +730,8 @@
 
   const actions = {
     closeSheet,
+    showFeriados, ferApply: applyFeriados, ferLater: () => { S.feriadosNuevos = []; closeSheet(); render(); },
+    checkFeriados: () => checkFeriados(true),
     tab: el => { S.tab = el.dataset.tab; S.tripId = null; render(); },
     install: async () => { if (S.installEvt) { S.installEvt.prompt(); await S.installEvt.userChoice; S.installEvt = null; render(); } },
     dayPrev: () => { S.day = U.addDays(S.day, -1); render(); },
@@ -630,7 +741,7 @@
     quickTipo: async el => { await DB.put('days', { date: S.day, tipo: el.dataset.tipo, updated: Date.now() }); toast(U.TIPOS[el.dataset.tipo].label + ' ✓'); render(); },
     editDay: el => editDay(el.dataset.tipo),
     saveDay,
-    delDay: async () => { if (ask('¿Borrar lo cargado en este día?')) { await DB.del('days', S.day); render(); } },
+    delDay: async () => { if (ask('¿Borrar lo cargado en este día?')) { await DB.del('days', S.day); for (const p of await photosOf('day:' + S.day)) if (!p.synced) await DB.del('photos', p.id); render(); } },
     fillPending: async () => {
       const P = U.periodRange(U.periodOf(S.day, S.cfg.cierre), S.cfg.cierre); const dm = await daysMap(); let n = 0;
       for (const d of P.days) if (d <= U.today() && !dm[d] && !U.isWeekend(d)) { await DB.put('days', { date: d, tipo: 'normal', inicio: S.cfg.inicio, fin: S.cfg.fin, updated: Date.now() }); n++; }
@@ -786,6 +897,8 @@
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
     await render();
     syncSoon(2000);
+    setTimeout(() => checkFeriados(false), 3000);
+    window.addEventListener('online', () => checkFeriados(false));
     setInterval(() => syncSoon(0), 120000);
   }
   init();

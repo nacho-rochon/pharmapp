@@ -77,3 +77,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);border-colo
 .empty{text-align:center;color:var(--mute);padding:24px 8px}
 pre.code{white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;max-height:200px;overflow:auto}
 .banner.hidden{display:none}
+.list li.rv{background:#f3ecfc;margin:0 -14px;padding-left:14px;padding-right:14px;border-left:4px solid #8a5cd0}
+.list li.rx{background:#fff1e0;margin:0 -14px;padding-left:14px;padding-right:14px;border-left:4px solid #e08a1e}
+.card.rv{border-left:5px solid #8a5cd0}.card.rx{border-left:5px solid #e08a1e}
+.status.extra{background:#ffe3c2;color:#a35400}

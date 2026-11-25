@@ -4,7 +4,8 @@ App para el celular del service técnico: registro diario de jornadas y viajes, 
 
 - Se instala desde Chrome ("Instalar app") y funciona sin internet.
 - Los datos quedan guardados en el celular. Las fotos se respaldan en Google Drive cuando hay conexión (Más → Configurar Drive).
-- Los Excel se generan sobre las plantillas de `templates/` (sin datos personales).
+- La planilla de horas tiene diseño propio (`excel.js`); la rendición de gastos se genera sobre la plantilla de la empresa en `templates/` (sin datos personales).
+- Feriados nacionales: una vez por semana consulta api.argentinadatos.com (con date.nager.at de respaldo) y pide confirmación.
 
 Archivos: `index.html` (pantalla), `app.js` (lógica), `excel.js` (planillas), `drive.js` (respaldo), `db.js` (base local), `sw.js` (modo sin internet).
 Al publicar cambios, subir el número de `VERSION` en `sw.js` para que los celulares bajen la versión nueva.

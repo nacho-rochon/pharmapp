@@ -1,8 +1,9 @@
-// Generación de los Excel sobre las planillas originales de la empresa.
+// Generación de los Excel: planilla de horas (diseño propio) y rendición (sobre la planilla de la empresa).
 const XL = (() => {
   let env = {
     ExcelJS: typeof ExcelJS !== 'undefined' ? ExcelJS : null,
-    loadTemplate: async name => (await fetch(`templates/${name}.xlsx`)).arrayBuffer()
+    loadTemplate: async name => (await fetch(`templates/${name}.xlsx`)).arrayBuffer(),
+    logo: async () => (await fetch('templates/logo.jpeg')).arrayBuffer()
   };
   const setup = o => Object.assign(env, o);
   const lib = () => env.ExcelJS || (typeof ExcelJS !== 'undefined' ? ExcelJS : null);
@@ -15,83 +16,189 @@ const XL = (() => {
     let auto = false;
     if (!r && !weekend && fillMissing) { r = { tipo: 'normal', inicio: cfg.inicio, fin: cfg.fin }; auto = true; }
     const out = { date: s, tipo: r ? r.tipo : null, auto, missing: !r && !weekend, viaje: 'NO',
-      salida: null, llegada: null, localidad: '', km: null, cliente: '', inicio: null, fin: null, obs: '', extra: 0 };
+      salida: null, llegada: null, localidad: '', km: null, cliente: '', inicio: null, fin: null, obs: '', dur: 0, extra: 0 };
     if (!r) return out;
-    if (U.SIN_TRABAJO.includes(r.tipo)) { out.obs = r.obs || U.TIPOS[r.tipo].obs; return out; }
-    out.inicio = r.inicio; out.fin = r.fin;
-    if (r.tipo === 'viaje') {
-      out.viaje = 'SI'; out.salida = r.salida || null; out.llegada = r.llegada || null;
+    const T = U.TIPOS[r.tipo] || U.TIPOS.normal;
+    if (U.SIN_TRABAJO.includes(r.tipo)) { out.obs = r.obs ? `${T.obs}: ${r.obs}` : T.obs; return out; }
+    const t = U.times(r);
+    out.inicio = t.inicio; out.fin = t.fin;
+    if (U.VIAJA.includes(r.tipo)) {
+      out.viaje = 'SI'; out.salida = t.inicio; out.llegada = t.fin;
       out.localidad = r.localidad || ''; out.km = r.km ?? null; out.cliente = r.cliente || '';
+    } else if (r.tipo === 'otra') {
+      out.localidad = r.localidad || ''; out.cliente = r.cliente || '';
     } else if (r.cliente) out.cliente = r.cliente;
-    const { extra } = U.calcDay(r, s, cfg);
-    out.extra = extra;
+    const c = U.calcDay(r, s, cfg);
+    out.dur = c.dur; out.extra = c.extra;
     let obs = (r.obs || '').trim();
     if (!obs && svcs && svcs.length) obs = svcs.map(v => [v.equipo, v.tareas].filter(Boolean).join(': ')).join(' / ');
-    if (extra > 0 && cfg.prefijoExtra !== false && !/\bhs\b/i.test(obs)) obs = `${U.fmtHs(extra)} hs extra${obs ? ': ' + obs : ''}`;
+    if (r.feriado && !/feriado/i.test(obs)) obs = `Feriado trabajado${r.feriadoNombre ? ' (' + r.feriadoNombre + ')' : ''}` + (obs ? '. ' + obs : '');
+    if (r.tipo === 'regreso' && !/regreso/i.test(obs)) obs = 'Regreso' + (obs ? '. ' + obs : '');
+    if (r.tipo === 'otra' && !obs) obs = 'Jornada en ' + (r.localidad || 'otra localidad');
     out.obs = obs;
     return out;
   }
 
-  const COLS = { A: 1, B: 2, C: 3, F: 6, I: 9, K: 11, Q: 17, S: 19, X: 24, AA: 27, AD: 30, AI: 35 };
-  const MERGES = [['C', 'E'], ['F', 'H'], ['I', 'J'], ['K', 'P'], ['Q', 'R'], ['S', 'W'], ['X', 'Z'], ['AA', 'AC'], ['AD', 'AI']];
+  // Colores de la planilla
+  const C = { azul: 'FF0B5CAB', azulClaro: 'FFE7F0FA', gris: 'FFF2F4F7', grisTxt: 'FF64707D', linea: 'FFD5DCE4', lila: 'FFF1E9FB',
+    naranja: 'FFFFE3C2', naranjaTxt: 'FFB35C00', libre: 'FFEEF1F4', blanco: 'FFFFFFFF' };
+  const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+  const thin = { style: 'thin', color: { argb: C.linea } };
+  const border = { top: thin, left: thin, bottom: thin, right: thin };
 
   async function buildHoras({ periodKey, days, services, clients, cfg, fillMissing }) {
     const P = U.periodRange(periodKey, cfg.cierre);
     const wb = new (lib().Workbook)();
-    await wb.xlsx.load(await env.loadTemplate('horas'));
-    const ws = wb.getWorksheet('PLANILLA');
-    ws.name = `${P.mesFin.toUpperCase()} ${P.year}`;
-    ws.getCell('C2').value = cfg.empleado || '';
-    ws.getCell('C3').value = cfg.sector || 'SERVICIO TECNICO';
-    ws.getCell('C4').value = P.mesInicio;
-    ws.getCell('G4').value = P.mesFin;
-    ws.getCell('L4').value = P.year;
-    ws.getCell('E5').value = U.excelDate(P.start);
-    ws.getCell('K5').value = U.excelDate(P.end);
+    wb.creator = 'Pharmapp';
+    const ws = wb.addWorksheet(`${P.mesFin.toUpperCase()} ${P.year}`, {
+      pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } },
+      headerFooter: { oddFooter: '&L&8Generado con Pharmapp&R&8Página &P de &N' },
+      views: [{ showGridLines: false }]
+    });
+    const COLS = [
+      ['Día', 6], ['Fecha', 10], ['Tipo de día', 17], ['Viaje', 7], ['Hs salida', 9], ['Hs llegada', 9], ['Localidad', 16], ['Km', 7],
+      ['Cliente / lugar', 20], ['Inicio jornada', 9], ['Fin jornada', 9], ['Hs trabajadas', 10], ['Hs extra', 9], ['Observaciones', 52]
+    ];
+    COLS.forEach(([, w], i) => { ws.getColumn(i + 1).width = w; });
+    const N = COLS.length, last = String.fromCharCode(64 + N);
 
+    // Encabezado
+    ws.mergeCells(`A1:${String.fromCharCode(64 + N - 2)}1`);
+    const t = ws.getCell('A1');
+    t.value = 'REGISTRO DE HORAS TRABAJADAS Y VIAJES REALIZADOS';
+    t.font = { bold: true, size: 15, color: { argb: C.azul } };
+    ws.getRow(1).height = 26;
+    const info = [['Empleado/a', cfg.empleado || ''], ['Sector', cfg.sector || 'SERVICIO TECNICO'],
+      ['Período', `del ${U.ddmmyy(P.start)} al ${U.ddmmyy(P.end)}  (${P.mesInicio} – ${P.mesFin} ${P.year})`], ['Sucursal', cfg.sucursal || '']];
+    info.forEach(([k, v], i) => {
+      const r = ws.getRow(2 + i);
+      r.getCell(1).value = k; r.getCell(1).font = { bold: true, color: { argb: C.grisTxt } };
+      ws.mergeCells(2 + i, 1, 2 + i, 2);
+      r.getCell(3).value = v; r.getCell(3).font = { bold: true };
+      ws.mergeCells(2 + i, 3, 2 + i, 9);
+    });
+    if (env.logo) {
+      try {
+        const id = wb.addImage({ buffer: await env.logo(), extension: 'jpeg' });
+        ws.addImage(id, { tl: { col: N - 1 + 0.55, row: 0.1 }, ext: { width: 92, height: 94 } });
+      } catch (e) { /* sin logo */ }
+    }
+
+    // Filas de días
     const svcBy = {};
     for (const v of services || []) (svcBy[v.fecha] = svcBy[v.fecha] || []).push(v);
-    const rows = [];
-    let total = 0;
-    P.days.forEach((s, i) => {
-      const r = 8 + i;
-      if (r > 37) { // 31 días: la plantilla trae 30 filas con formato, copiamos el de la anterior
-        const src = ws.getRow(37), dst = ws.getRow(r);
-        dst.height = src.height;
-        for (let c = 1; c <= 35; c++) dst.getCell(c).style = JSON.parse(JSON.stringify(src.getCell(c).style || {}));
-        for (const [a, b] of MERGES) { try { ws.mergeCells(`${a}${r}:${b}${r}`); } catch (e) { /* ya combinada */ } }
-        const w = U.dow(s);
-        if (w === 0 || w === 6) for (let c = 1; c <= 35; c++) dst.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: w === 0 ? 'FFFF5050' : 'FFFFF2CC' } };
-      }
-      const d = resolveDay(s, days[s], cfg, fillMissing, svcBy[s]);
-      rows.push(d);
-      total += d.extra;
-      const row = ws.getRow(r);
-      const set = (col, v) => { row.getCell(COLS[col]).value = v; };
-      set('A', U.DIAS[U.dow(s)]);
-      set('B', U.excelDate(s)); row.getCell(2).numFmt = 'dd/mm/yy';
-      set('C', d.viaje);
-      set('F', U.frac(d.salida)); set('I', U.frac(d.llegada));
-      set('K', d.localidad || null); set('Q', d.km ?? null); set('S', d.cliente || null);
-      set('X', U.frac(d.inicio)); set('AA', U.frac(d.fin));
-      set('AD', d.obs || null);
-      for (const c of ['F', 'I', 'X', 'AA']) row.getCell(COLS[c]).numFmt = 'h:mm';
-    });
-    const totRow = 8 + P.days.length;
-    if (totRow !== 38) { ws.getCell(`AI${totRow}`).style = JSON.parse(JSON.stringify(ws.getCell('AI38').style || {})); }
-    ws.getCell(`AI${totRow}`).value = `Total: ${U.fmtHs(total)} hs extra`;
-    ws.getCell(`AI${totRow}`).font = { bold: true };
-    ws.getCell(`AI${totRow}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+    const rows = P.days.map(s => resolveDay(s, days[s], cfg, fillMissing, svcBy[s]));
+    const total = rows.reduce((a, r) => a + r.extra, 0);
+    const kmTot = rows.reduce((a, r) => a + (r.viaje === 'SI' && r.km ? r.km : 0), 0);
+    const trab = rows.filter(r => r.inicio).length;
+    const viajes = rows.filter(r => r.viaje === 'SI').length;
 
-    // Hoja LOCALIDADES con la base actual
-    const loc = wb.getWorksheet('LOCALIDADES');
-    if (loc) {
-      for (let r = 2; r <= Math.max(loc.rowCount, 2); r++) for (let c = 1; c <= 3; c++) loc.getRow(r).getCell(c).value = null;
-      (clients || []).forEach((c, i) => { const row = loc.getRow(i + 2); row.getCell(1).value = c.localidad; row.getCell(2).value = c.km ?? null; row.getCell(3).value = c.clientes; });
+    // Resumen
+    const RS = 7;
+    [['Días trabajados', trab], ['Días de viaje', viajes], ['Km recorridos', kmTot], ['Total hs extra', total]].forEach(([k, v], i) => {
+      const c0 = 1 + i * 3;
+      ws.mergeCells(RS, c0, RS, c0 + 1);
+      const a = ws.getRow(RS).getCell(c0); a.value = k; a.font = { size: 9, color: { argb: C.grisTxt } }; a.alignment = { horizontal: 'center' };
+      ws.mergeCells(RS + 1, c0, RS + 1, c0 + 1);
+      const b = ws.getRow(RS + 1).getCell(c0); b.value = v; b.font = { bold: true, size: 14, color: { argb: i === 3 ? C.naranjaTxt : C.azul } };
+      b.alignment = { horizontal: 'center' }; if (i === 3) b.numFmt = '0.##';
+      for (let c = c0; c <= c0 + 1; c++) for (const rr of [RS, RS + 1]) { ws.getRow(rr).getCell(c).fill = fill(i === 3 ? C.naranja : C.azulClaro); }
+    });
+
+    const H = RS + 3;
+    const hr = ws.getRow(H);
+    COLS.forEach(([name], i) => {
+      const c = hr.getCell(i + 1);
+      c.value = name; c.font = { bold: true, color: { argb: C.blanco }, size: 10 }; c.fill = fill(C.azul);
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; c.border = border;
+    });
+    hr.height = 30;
+    ws.views = [{ state: 'frozen', ySplit: H, showGridLines: false }];
+    ws.autoFilter = { from: { row: H, column: 1 }, to: { row: H, column: N } };
+
+    rows.forEach((d, i) => {
+      const s = d.date;
+      const row = ws.getRow(H + 1 + i);
+      const T = d.tipo ? U.TIPOS[d.tipo] : null;
+      const tipoTxt = d.tipo ? (T.corto || T.label) + (d.auto ? ' (auto)' : '') : (U.isWeekend(s) ? 'Fin de semana' : '—');
+      const vals = [U.DIAS[U.dow(s)], U.excelDate(s), tipoTxt, d.viaje === 'SI' ? 'SI' : 'NO', U.frac(d.salida), U.frac(d.llegada), d.localidad || null,
+        d.km ?? null, d.cliente || null, U.frac(d.inicio), U.frac(d.fin), d.dur || null, d.extra || null, d.obs || null];
+      vals.forEach((v, k) => { row.getCell(k + 1).value = v; });
+      let bg = null;
+      if (T && T.viaje) bg = C.lila;
+      else if (d.extra > 0) bg = C.naranja;
+      else if ((d.tipo && U.SIN_TRABAJO.includes(d.tipo)) || (!d.tipo && U.isWeekend(s))) bg = C.libre;
+      for (let k = 1; k <= N; k++) {
+        const c = row.getCell(k);
+        c.border = border; c.font = { size: 10 };
+        c.alignment = { vertical: 'middle', horizontal: [1, 2, 4, 5, 6, 8, 10, 11, 12, 13].includes(k) ? 'center' : 'left', wrapText: k === N || k === 9 };
+        if (bg) c.fill = fill(bg);
+      }
+      row.getCell(2).numFmt = 'dd/mm/yy';
+      for (const k of [5, 6, 10, 11]) row.getCell(k).numFmt = 'h:mm';
+      row.getCell(12).numFmt = '0.##'; row.getCell(13).numFmt = '0.##';
+      if (d.extra > 0) row.getCell(13).font = { bold: true, size: 10, color: { argb: C.naranjaTxt } };
+      if (U.dow(s) === 0) row.getCell(1).font = { bold: true, size: 10, color: { argb: 'FFC0392B' } };
+      if (d.missing && !d.auto) row.getCell(3).font = { italic: true, size: 10, color: { argb: 'FFC0392B' } };
+    });
+    // Totales
+    const TR = H + 1 + rows.length, first = H + 1, lastR = TR - 1;
+    const tot = ws.getRow(TR);
+    tot.getCell(1).value = 'TOTALES'; ws.mergeCells(TR, 1, TR, 7);
+    tot.getCell(8).value = { formula: `SUM(H${first}:H${lastR})`, result: kmTot };
+    tot.getCell(12).value = { formula: `SUM(L${first}:L${lastR})`, result: rows.reduce((a, r) => a + r.dur, 0) };
+    tot.getCell(13).value = { formula: `SUM(M${first}:M${lastR})`, result: total };
+    tot.getCell(14).value = `Total: ${U.fmtHs(total)} hs extra`;
+    for (let k = 1; k <= N; k++) {
+      const c = tot.getCell(k);
+      c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.azul); c.border = border;
+      c.alignment = { horizontal: k === 1 || k === N ? 'left' : 'center', vertical: 'middle' };
+      if ([12, 13].includes(k)) c.numFmt = '0.##';
     }
-    const apellido = (cfg.empleado || '').trim().split(/\s+/);
-    const nombreArchivo = apellido.length > 1 ? [...apellido.slice(1), apellido[0]].join(' ') : (cfg.empleado || '');
-    const filename = U.safe(`${P.mesFin.toUpperCase()} ${nombreArchivo.toUpperCase()} Planilla Serv. Tecnico ${cfg.sucursalCorta || 'BB'}`) + '.xlsx';
+    tot.height = 22;
+    // Referencias y firmas
+    const ref = ws.getRow(TR + 2);
+    [['Viaje / otra localidad', C.lila], ['Horas extra', C.naranja], ['Fin de semana / feriado / licencia', C.libre]].forEach(([k, col], i) => {
+      const c = ref.getCell(1 + i * 4); c.fill = fill(col); c.border = border;
+      const l = ref.getCell(2 + i * 4); l.value = k; l.font = { size: 9, color: { argb: C.grisTxt } };
+    });
+    const fr = ws.getRow(TR + 6);
+    fr.getCell(3).value = 'Firma empleado/a'; fr.getCell(10).value = 'Firma responsable';
+    for (const [a, b] of [[2, 6], [9, 13]]) { ws.mergeCells(TR + 5, a, TR + 5, b); ws.getRow(TR + 5).getCell(a).border = { bottom: { style: 'thin' } }; }
+    fr.getCell(3).font = fr.getCell(10).font = { size: 9, color: { argb: C.grisTxt } };
+    ws.pageSetup.printArea = `A1:${last}${TR + 6}`;
+    ws.pageSetup.printTitlesRow = `${H}:${H}`;
+
+    // Hoja 2: detalle de horas extra (para rendirlas)
+    const he = wb.addWorksheet('HORAS EXTRA', { views: [{ showGridLines: false }] });
+    he.columns = [{ width: 6 }, { width: 11 }, { width: 18 }, { width: 9 }, { width: 9 }, { width: 10 }, { width: 70 }];
+    he.getCell('A1').value = `Horas extra – ${P.mesFin} ${P.year} – ${cfg.empleado || ''}`; he.getCell('A1').font = { bold: true, size: 13, color: { argb: C.azul } };
+    const hh = he.getRow(3);
+    ['Día', 'Fecha', 'Tipo', 'Inicio', 'Fin', 'Hs extra', 'Motivo / tareas'].forEach((n, i) => {
+      const c = hh.getCell(i + 1); c.value = n; c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.azul); c.border = border; c.alignment = { horizontal: 'center' };
+    });
+    const ex = rows.filter(r => r.extra > 0);
+    ex.forEach((d, i) => {
+      const r = he.getRow(4 + i);
+      const T = U.TIPOS[d.tipo];
+      [U.DIAS[U.dow(d.date)], U.excelDate(d.date), T ? (T.corto || T.label) : '', U.frac(d.inicio), U.frac(d.fin), d.extra, d.obs || ''].forEach((v, k) => { r.getCell(k + 1).value = v; });
+      r.getCell(2).numFmt = 'dd/mm/yy'; r.getCell(4).numFmt = r.getCell(5).numFmt = 'h:mm'; r.getCell(6).numFmt = '0.##';
+      for (let k = 1; k <= 7; k++) { const c = r.getCell(k); c.border = border; c.alignment = { vertical: 'top', wrapText: k === 7, horizontal: k === 7 || k === 3 ? 'left' : 'center' }; }
+    });
+    const ht = he.getRow(4 + ex.length);
+    ht.getCell(5).value = 'TOTAL'; ht.getCell(6).value = { formula: ex.length ? `SUM(F4:F${3 + ex.length})` : '0', result: total }; ht.getCell(6).numFmt = '0.##';
+    for (let k = 1; k <= 7; k++) { ht.getCell(k).fill = fill(C.naranja); ht.getCell(k).font = { bold: true }; ht.getCell(k).border = border; }
+    he.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+    // Hoja 3: localidades
+    const loc = wb.addWorksheet('LOCALIDADES');
+    loc.columns = [{ header: 'LOCALIDAD', width: 18 }, { header: 'KM', width: 8 }, { header: 'CLIENTE/LUGAR', width: 40 }];
+    loc.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: C.blanco } }; c.fill = fill(C.azul); });
+    (clients || []).forEach(c => loc.addRow([c.localidad, c.km ?? null, c.clientes]));
+
+    const parts = (cfg.empleado || '').trim().split(/\s+/);
+    const nombre = parts.length > 1 ? [...parts.slice(1), parts[0]].join(' ') : (cfg.empleado || '');
+    const filename = U.safe(`${P.mesFin.toUpperCase()} ${nombre.toUpperCase()} Planilla Serv. Tecnico ${cfg.sucursalCorta || 'BB'}`) + '.xlsx';
     return { buffer: await wb.xlsx.writeBuffer(), filename, total, rows, period: P };
   }
 

@@ -1,9 +1,9 @@
 // Service worker: guarda la app en el celu para que funcione sin internet.
-const VERSION = 'pharmapp-v2';
+const VERSION = 'pharmapp-v3';
 const FILES = [
   './', 'index.html', 'styles.css', 'app.js', 'util.js', 'db.js', 'excel.js', 'drive.js',
   'manifest.webmanifest', 'vendor/exceljs.min.js', 'vendor/jszip.min.js',
-  'templates/horas.xlsx', 'templates/rendicion.xlsx',
+  'templates/rendicion.xlsx', 'templates/logo.jpeg',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', e => {

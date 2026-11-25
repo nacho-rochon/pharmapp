@@ -37,29 +37,40 @@ const U = (() => {
   }
   const shiftPeriod = (key, n) => { const [y, m] = key.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
 
-  // Tipos de día
+  // Tipos de día. css = color en la app; viaje: true = días en otra localidad (color lila)
   const TIPOS = {
     normal: { label: 'Jornada normal', css: '' },
-    viaje: { label: 'Viaje', css: 'viaje' },
+    viaje: { label: 'Viaje (ida, o ida y vuelta)', corto: 'Viaje', css: 'viaje', viaje: true },
+    otra: { label: 'Jornada en otra localidad', corto: 'Otra localidad', css: 'viaje', viaje: true },
+    regreso: { label: 'Viaje de regreso', corto: 'Regreso', css: 'viaje', viaje: true },
     extra: { label: 'Trabajo en día libre', css: 'extra' },
     vacaciones: { label: 'Vacaciones', css: 'libre', obs: 'VACACIONES' },
     feriado: { label: 'Feriado', css: 'libre', obs: 'FERIADO' },
     franco: { label: 'Franco / no laborable', css: 'libre', obs: 'FRANCO' },
-    licencia: { label: 'Licencia / enfermedad', css: 'libre', obs: 'LICENCIA' }
+    licencia: { label: 'Licencia / enfermedad', css: 'libre', obs: 'LICENCIA' },
+    estudio: { label: 'Licencia por estudio', css: 'libre', obs: 'LICENCIA POR ESTUDIO' }
   };
-  const SIN_TRABAJO = ['vacaciones', 'feriado', 'franco', 'licencia'];
+  const SIN_TRABAJO = ['vacaciones', 'feriado', 'franco', 'licencia', 'estudio'];
+  const VIAJA = ['viaje', 'regreso']; // días en los que se maneja: inicio = salida, fin = llegada
+
+  // Horario efectivo del día
+  function times(rec) {
+    if (!rec || SIN_TRABAJO.includes(rec.tipo)) return { inicio: null, fin: null };
+    if (VIAJA.includes(rec.tipo)) return { inicio: rec.salida || rec.inicio || null, fin: rec.llegada || rec.fin || null };
+    return { inicio: rec.inicio || null, fin: rec.fin || null };
+  }
 
   // Horas trabajadas y horas extra de un día
   function calcDay(rec, s, cfg) {
-    if (!rec || SIN_TRABAJO.includes(rec.tipo)) return { dur: 0, extra: 0 };
-    const a = toMin(rec.inicio), b0 = toMin(rec.fin);
+    const { inicio, fin } = times(rec);
+    const a = toMin(inicio), b0 = toMin(fin);
     if (a == null || b0 == null) return { dur: 0, extra: 0 };
     const b = b0 <= a ? b0 + 1440 : b0; // vuelta pasada la medianoche
     const dur = (b - a) / 60;
     const base = (toMin(cfg.fin) - toMin(cfg.inicio)) / 60;
     const libre = isWeekend(s) || rec.tipo === 'extra' || rec.feriado;
     const extra = libre ? dur : Math.max(0, dur - base);
-    return { dur, extra: Math.round(extra * 100) / 100 };
+    return { dur: Math.round(dur * 100) / 100, extra: Math.round(extra * 100) / 100 };
   }
 
   const money = n => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 });
@@ -76,6 +87,6 @@ const U = (() => {
   const TIPOS_SERVICE = ['Mantenimiento correctivo', 'Mantenimiento preventivo', 'Instalación', 'Revisión / diagnóstico', 'Capacitación', 'Otro'];
 
   return { DIAS, DIAS_LARGO, MESES, pad, ymd, parse, today, addDays, dow, isWeekend, ddmm, ddmmyy, largo, excelDate, toMin, frac, fmtHs,
-    periodOf, periodRange, shiftPeriod, TIPOS, SIN_TRABAJO, calcDay, money, num, safe, esc, CONCEPTOS, TIPOS_SERVICE };
+    periodOf, periodRange, shiftPeriod, TIPOS, SIN_TRABAJO, VIAJA, times, calcDay, money, num, safe, esc, CONCEPTOS, TIPOS_SERVICE };
 })();
 if (typeof module !== 'undefined') module.exports = U;
