@@ -619,7 +619,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v3 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v4 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
@@ -894,7 +894,12 @@
     if (!(await DB.all('clients')).length) for (const [localidad, km, clientes] of SEED_CLIENTS) await DB.put('clients', { id: DB.id(), localidad, km, clientes });
     Drive.onChange(paintPill);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      const hadCtrl = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+      // cuando se instala una versión nueva, recargamos una vez para usarla
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtrl && !S.reloaded) { S.reloaded = true; location.reload(); } });
+    }
     await render();
     syncSoon(2000);
     setTimeout(() => checkFeriados(false), 3000);

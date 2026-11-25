@@ -13,7 +13,7 @@ App web instalable (PWA) para el celular de un técnico de service de MG Pharmac
 - `excel.js`: planilla de horas (diseño propio con ExcelJS), rendición de gastos (sobre `templates/rendicion.xlsx`, planilla oficial de la empresa) y resumen de services.
 - `drive.js`: respaldo de fotos en Google Drive vía un Apps Script que la usuaria pegó en su cuenta (el código del script se genera en la app, Más → Configurar Drive).
 - `db.js`: IndexedDB (days, clients, trips, expenses, services, photos, settings). Todo funciona sin internet.
-- `sw.js`: service worker (cache de la app). **En cada cambio subir `VERSION`** o los celulares siguen con la versión vieja.
+- `sw.js`: service worker. Con internet trae siempre lo último (network-first, 4 s de espera) y sin internet usa la copia guardada; al instalarse una versión nueva la app se recarga sola. **En cada cambio subir `VERSION`** (y el texto "Pharmapp vN" en app.js).
 - `vendor/`: ExcelJS 4.4.0 y JSZip 3.10.1 (locales para modo offline).
 
 ## Reglas de negocio
