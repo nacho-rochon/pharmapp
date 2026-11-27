@@ -89,6 +89,7 @@ function out(o) {
       return await call(cfg, { action: 'mail', to, subject, body, name, mime: blob.type || 'application/octet-stream', data: await b64(blob) });
     } catch (e) {
       if (/accion/.test(e.message)) throw new Error('Hay que actualizar el script de Drive para poder mandar mails (Más → Ver configuración).');
+      if (/send_mail|MailApp|permiso|permission/i.test(e.message)) throw new Error('Falta darle permiso al script para mandar mails. En script.google.com elegí la función "doGet", tocá ▶ Ejecutar y aceptá los permisos (detalle en Más → Ver configuración).');
       throw e;
     }
   }

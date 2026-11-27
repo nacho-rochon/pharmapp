@@ -646,7 +646,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v7 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v8 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
@@ -666,7 +666,7 @@
           <li>Entrá a <b>script.google.com</b> y abrí tu proyecto de Pharmapp.</li>
           <li>Borrá todo el código, pegá el de abajo (botón Copiar) y guardá 💾.</li>
           <li><b>Implementar → Gestionar implementaciones → ✏️ editar</b>. En "Versión" elegí <b>Nueva versión</b> y tocá <b>Implementar</b>.</li>
-          <li>Google te va a pedir permiso para <b>enviar correo en tu nombre</b>: aceptalo (si dice "Google no verificó esta app": Configuración avanzada → Ir a … → Permitir).</li></ol>
+          <li>Dar el permiso de mail: arriba, al lado de ▶ Ejecutar, elegí la función <b>doGet</b> y tocá <b>▶ Ejecutar</b> → <b>Revisar permisos</b> → tu cuenta → (si dice "Google no verificó esta app": Configuración avanzada → Ir a …) → <b>Permitir</b>. Tiene que aparecer "enviar correo en tu nombre".</li></ol>
         La URL no cambia, no hay que tocar nada más acá.</div>` : ''}
       <div class="mute">Se hace una sola vez, mejor desde la compu:</div>
       <ol style="padding-left:20px;margin:8px 0">
