@@ -7,7 +7,7 @@ const Drive = (() => {
   const emit = () => listeners.forEach(f => f(state));
 
   function scriptCode(token, root) {
-    return `// Pharmapp – respaldo en Google Drive. Pegá este código en script.google.com
+    return `// Pharmapp – respaldo en Google Drive y envío por mail (versión 2). Pegá este código en script.google.com
 const TOKEN = '${token}';
 const ROOT = '${root || 'Pharmapp'}';
 
@@ -19,7 +19,12 @@ function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
     if (req.token !== TOKEN) return out({ ok: false, error: 'token' });
-    if (req.action === 'ping') return out({ ok: true });
+    if (req.action === 'ping') return out({ ok: true, v: 2 });
+    if (req.action === 'mail') {
+      const att = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime, req.name);
+      MailApp.sendEmail({ to: req.to, subject: req.subject, body: req.body, attachments: [att] });
+      return out({ ok: true });
+    }
     const folder = getFolder(ROOT + '/' + (req.folder || ''));
     if (req.action === 'upload') {
       const old = folder.getFilesByName(req.name);
@@ -79,6 +84,15 @@ function out(o) {
     return call(cfg, { action: 'upload', folder, name, mime: blob.type || 'application/octet-stream', data: await b64(blob), overwrite });
   }
 
+  async function sendMail(cfg, to, subject, body, name, blob) {
+    try {
+      return await call(cfg, { action: 'mail', to, subject, body, name, mime: blob.type || 'application/octet-stream', data: await b64(blob) });
+    } catch (e) {
+      if (/accion/.test(e.message)) throw new Error('Hay que actualizar el script de Drive para poder mandar mails (Más → Ver configuración).');
+      throw e;
+    }
+  }
+
   const configured = cfg => !!(cfg && cfg.driveUrl && cfg.driveToken);
 
   // describe(photo) -> { folder, name } lo resuelve la app según a qué pertenece la foto
@@ -111,5 +125,5 @@ function out(o) {
     }
   }
 
-  return { scriptCode, upload, call, sync, configured, onChange: f => { listeners.add(f); f(state); }, state: () => state };
+  return { scriptCode, upload, sendMail, call, sync, configured, onChange: f => { listeners.add(f); f(state); }, state: () => state };
 })();

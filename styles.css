@@ -81,3 +81,10 @@ pre.code{white-space:pre-wrap;word-break:break-all;background:#fff;border:1px so
 .list li.rx{background:#fff1e0;margin:0 -14px;padding-left:14px;padding-right:14px;border-left:4px solid #e08a1e}
 .card.rv{border-left:5px solid #8a5cd0}.card.rx{border-left:5px solid #e08a1e}
 .status.extra{background:#ffe3c2;color:#a35400}
+
+/* columnas Services / Comprobantes en la lista del período */
+.list .cnt{width:62px;flex:none;text-align:center;font-weight:700;font-size:15px}
+.list .cnt.bad{color:#c0392b}
+.list li.lhead{font-size:12px;color:var(--mute);font-weight:700;padding-top:2px;padding-bottom:6px}
+.list li.lhead .cnt{font-size:11px;font-weight:700;line-height:1.2}
+.list li .grow .status{display:inline-block;margin-top:3px}

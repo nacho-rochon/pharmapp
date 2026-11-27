@@ -3,7 +3,7 @@
   const $ = s => document.querySelector(s);
   const E = U.esc;
   const DEF_CFG = {
-    empleado: '', sector: 'SERVICIO TECNICO', sucursal: 'Bahia Blanca', sucursalCorta: 'BB',
+    empleado: '', mailTo: 'servicebb@pharmacorp.com.ar', sector: 'SERVICIO TECNICO', sucursal: 'Bahia Blanca', sucursalCorta: 'BB',
     inicio: '08:00', fin: '16:00', cierre: 25, prefijoExtra: true,
     driveUrl: '', driveToken: '', driveRoot: 'Pharmapp', lastBackup: ''
   };
@@ -78,6 +78,7 @@
       <div class="btns">
         <button class="btn pri big" data-act="fileDownload">⬇️ Descargar</button>
         ${canShare ? '<button class="btn" data-act="fileShare">📤 Compartir (WhatsApp, mail…)</button>' : ''}
+        ${S.cfg.mailTo ? `<button class="btn pri" data-act="fileMail">📧 Enviar a ${E(S.cfg.mailTo)}</button>` : ''}
         ${Drive.configured(S.cfg) && driveFolder ? '<button class="btn" data-act="fileDrive">☁️ Guardar en Drive</button>' : ''}
       </div>`);
   }
@@ -159,6 +160,7 @@
     const css = t.viaje ? 'viaje' : (ex > 0 ? 'extra' : t.css);
     return `<span class="status ${css}">${E(t.corto || t.label)}${rec.feriado ? ' (feriado)' : ''}${hs}${ex > 0 ? ` · +${U.fmtHs(ex)}` : ''}</span>`;
   }
+  const kmTxt = rec => rec.tipo === 'idavuelta' && rec.kmBase ? `${rec.kmBase} km × 2 = ${rec.km} km (ida y vuelta)` : `${rec.km} km`;
   async function viewDia() {
     const s = S.day, rec = await DB.get('days', s);
     const svcs = (await DB.all('services')).filter(v => v.fecha === s);
@@ -179,8 +181,9 @@
     if (!rec) {
       h += `<div class="btns">
         <button class="btn ok big" data-act="quickNormal">✅ Jornada normal ${S.cfg.inicio} a ${S.cfg.fin}</button>
-        <div class="btns three" style="margin:0">
+        <div class="btns two" style="margin:0">
           <button class="btn pri" data-act="editDay" data-tipo="viaje">🚗 Viaje de ida</button>
+          <button class="btn pri" data-act="editDay" data-tipo="idavuelta">🔁 Viaje de ida y vuelta</button>
           <button class="btn pri" data-act="editDay" data-tipo="regreso">🏠 Viaje de vuelta</button>
           <button class="btn pri" data-act="editDay" data-tipo="otra">📍 Otra localidad</button></div>
         <button class="btn" data-act="editDay" data-tipo="${U.isWeekend(s) ? 'extra' : 'normal'}">🕒 Otro horario / horas extra</button></div>
@@ -191,7 +194,7 @@
       const ph = rec.tipo === 'estudio' ? await photosOf('day:' + s) : [];
       const T = U.TIPOS[rec.tipo] || {};
       h += `<div class="card ${dayClass(rec, s)}">${dayStatus(rec, s)}
-        ${T.viaje ? `<div style="margin-top:8px"><b>${rec.tipo === 'regreso' ? 'Volviendo desde ' : rec.tipo === 'viaje' ? 'Hacia ' : ''}${E(rec.localidad || '')}</b> ${rec.km && rec.tipo !== 'otra' ? `· ${rec.km} km` : ''} ${rec.cliente ? `· ${E(rec.cliente)}` : ''}
+        ${T.viaje ? `<div style="margin-top:8px"><b>${rec.tipo === 'regreso' ? 'Volviendo desde ' : rec.tipo === 'viaje' ? 'Hacia ' : rec.tipo === 'idavuelta' ? 'Ida y vuelta a ' : ''}${E(rec.localidad || '')}</b> ${rec.km && rec.tipo !== 'otra' ? `· ${kmTxt(rec)}` : ''} ${rec.cliente ? `· ${E(rec.cliente)}` : ''}
           ${U.VIAJA.includes(rec.tipo) ? `<div class="mute small">Salida ${E(rec.salida || '—')} · Llegada ${E(rec.llegada || '—')}</div>` : ''}</div>` : ''}
         ${calc.extra > 0 ? `<div style="margin-top:8px" class="status extra">+${U.fmtHs(calc.extra)} hs extra</div>` : ''}
         ${rec.obs ? `<div style="margin-top:8px">${E(rec.obs)}</div>` : ''}
@@ -204,7 +207,14 @@
     const pend = P.days.filter(d => d <= U.today() && !dm[d] && !U.isWeekend(d));
     h += `<h3>Período ${U.ddmm(P.start)} al ${U.ddmm(P.end)}</h3>`;
     if (pend.length) h += `<div class="banner warn">Hay ${pend.length} día(s) hábiles sin cargar. <button class="btn" style="margin-top:8px" data-act="fillPending">Marcar todos como jornada normal</button></div>`;
-    h += `<div class="card"><ul class="list">${P.days.slice().reverse().filter(d => d <= U.addDays(U.today(), 7)).map(d => `<li class="${dayClass(dm[d], d)}" data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div></div>${dayStatus(dm[d], d)}</li>`).join('')}</ul></div>`;
+    // cuántos services y cuántas fotos de órdenes hay por día (para no olvidarse de ninguna)
+    const allSvcs = (await DB.all('services')).filter(v => v.fecha >= P.start && v.fecha <= P.end);
+    const allPh = await DB.all('photos');
+    const cnt = {};
+    for (const v of allSvcs) { const c = cnt[v.fecha] = cnt[v.fecha] || { s: 0, f: 0 }; c.s++; c.f += allPh.filter(p => p.refId === v.id).length; }
+    const cols = d => { const c = cnt[d]; if (!c) return '<span class="cnt">–</span><span class="cnt">–</span>';
+      return `<span class="cnt">(${c.s})</span><span class="cnt${c.f < c.s ? ' bad' : ''}">(${c.f})</span>`; };
+    h += `<div class="card"><ul class="list"><li class="lhead"><div class="grow">Día</div><span class="cnt">Services</span><span class="cnt">Compro&shy;bantes</span></li>${P.days.slice().reverse().filter(d => d <= U.addDays(U.today(), 7)).map(d => `<li class="${dayClass(dm[d], d)}" data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div>${dayStatus(dm[d], d)}</div>${cols(d)}</li>`).join('')}</ul></div>`;
     return h;
   }
   async function editDay(tipo) {
@@ -227,14 +237,15 @@
         ${openTrips.length ? `<label>Viaje (rendición de gastos)</label><select id="dTrip"><option value="">— ninguno —</option>${openTrips.map(x => `<option value="${x.id}" ${x.id === r.tripId ? 'selected' : ''}>${E(tripName(x))}</option>`).join('')}</select>` : ''}
         <label id="dLocLbl">Localidad</label><select id="dLoc"><option value="">— elegir —</option>${cl.map(c => `<option value="${E(c.localidad)}" data-km="${c.km ?? ''}" ${c.localidad === r.localidad ? 'selected' : ''}>${E(c.localidad)} (${c.km ?? '?'} km)</option>`).join('')}
           ${r.localidad && !cl.some(c => c.localidad === r.localidad) ? `<option selected>${E(r.localidad)}</option>` : ''}</select>
-        <div class="grid2"><div id="dKmBox"><label>Km</label><input inputmode="numeric" id="dKm" value="${E(r.km ?? '')}"></div>
+        <div class="grid2"><div id="dKmBox"><label id="dKmLbl">Km</label><input inputmode="numeric" id="dKm" value="${E(r.km ?? '')}"></div>
         <div><label>Cliente / lugar</label><input id="dCli" list="dlCli" value="${E(r.cliente || '')}"></div></div>
+        <div id="dKmHint" class="banner ok small" style="margin:8px 0 0;display:none"></div>
         <datalist id="dlCli">${opts.map(o => `<option value="${E(o.nombre)}">${E(o.localidad)}</option>`).join('')}</datalist>
       </div>
       <div id="dViajaBox"><div class="grid2"><div><label>Hora de salida</label><input type="time" id="dSal" value="${E(r.salida || S.cfg.inicio)}"></div>
         <div><label>Hora de llegada</label><input type="time" id="dLle" value="${E(r.llegada || '')}"></div></div>
         <div class="mute small" style="margin-top:6px">La jornada de un día de viaje va de la hora de salida a la de llegada.</div>
-        <div class="mute small" id="dIdaHint" style="margin-top:4px">Si vas y volvés el mismo día, cargalo como viaje de ida.</div></div>
+        <div class="mute small" id="dIdaHint" style="margin-top:4px">Si vas y volvés el mismo día, elegí "Viaje de ida y vuelta".</div></div>
       <div id="dTimes"><div class="grid2"><div><label>Inicio jornada</label><input type="time" id="dIni" value="${E(r.inicio || '')}"></div>
         <div><label>Fin jornada</label><input type="time" id="dFin" value="${E(r.fin || '')}"></div></div></div>
       <div id="dEstudio"><label>Comprobante de la universidad</label>
@@ -244,20 +255,31 @@
       <div id="dCalc" class="mute small" style="margin-top:6px"></div>
       <div class="btns"><button class="btn pri big" data-act="saveDay">Guardar</button></div>`, box => {
       const show = (id, on) => { box.querySelector(id).style.display = on ? '' : 'none'; };
+      const locKm = () => { const o = box.querySelector('#dLoc').selectedOptions[0]; return o && o.dataset.km !== undefined && o.dataset.km !== '' ? U.num(o.dataset.km) : null; };
+      let prevTipo = null;
       const upd = () => {
         const tp = val('dTipo');
         const T = U.TIPOS[tp];
         show('#dViaje', T.viaje); show('#dKmBox', U.VIAJA.includes(tp)); show('#dViajaBox', U.VIAJA.includes(tp));
         show('#dTimes', !U.VIAJA.includes(tp) && !U.SIN_TRABAJO.includes(tp)); show('#dEstudio', tp === 'estudio');
-        box.querySelector('#dLocLbl').textContent = tp === 'regreso' ? 'Volviendo desde' : tp === 'viaje' ? 'Destino' : 'Localidad';
+        box.querySelector('#dLocLbl').textContent = tp === 'regreso' ? 'Volviendo desde' : (tp === 'viaje' || tp === 'idavuelta') ? 'Destino' : 'Localidad';
         show('#dIdaHint', tp === 'viaje');
+        // ida y vuelta: km por dos, con la cuenta a la vista
+        const iv = tp === 'idavuelta', base = locKm();
+        box.querySelector('#dKmLbl').textContent = iv ? 'Km totales (ida + vuelta)' : 'Km';
+        if (prevTipo !== tp && base != null) { const k = U.num(val('dKm')); if (k == null || k === base || k === base * 2) box.querySelector('#dKm').value = iv ? base * 2 : base; }
+        prevTipo = tp;
+        const hint = box.querySelector('#dKmHint');
+        hint.style.display = iv ? '' : 'none';
+        hint.textContent = base != null ? `🔁 ${base} km × 2 (ida y vuelta) = ${base * 2} km` : 'Poné el total de km sumando la ida y la vuelta.';
         const c = U.calcDay({ tipo: tp, inicio: val('dIni'), fin: val('dFin'), salida: val('dSal'), llegada: val('dLle') }, s, S.cfg);
         box.querySelector('#dCalc').textContent = c.dur ? `Total ${U.fmtHs(c.dur)} hs${c.extra ? ` · ${U.fmtHs(c.extra)} hs extra` : ''}` : '';
       };
       box.querySelector('#dTipo').onchange = upd;
       for (const id of ['#dIni', '#dFin', '#dSal', '#dLle']) box.querySelector(id).oninput = upd;
       box.querySelector('#dLoc').onchange = e => {
-        const o = e.target.selectedOptions[0]; if (o && o.dataset.km) box.querySelector('#dKm').value = o.dataset.km;
+        const o = e.target.selectedOptions[0]; if (o && o.dataset.km) box.querySelector('#dKm').value = val('dTipo') === 'idavuelta' ? U.num(o.dataset.km) * 2 : o.dataset.km;
+        upd();
         const c = cl.find(x => x.localidad === e.target.value);
         if (c && !val('dCli')) box.querySelector('#dCli').value = String(c.clientes || '').split(',')[0].trim();
       };
@@ -276,6 +298,7 @@
     const rec = { date: S.day, tipo, updated: Date.now(), obs: val('dObs') };
     if (U.VIAJA.includes(tipo)) {
       Object.assign(rec, { salida: val('dSal'), llegada: val('dLle'), km: U.num(val('dKm')) });
+      if (tipo === 'idavuelta') { const o = document.querySelector('#dLoc').selectedOptions[0]; const b = o && o.dataset.km ? U.num(o.dataset.km) : null; if (b != null && rec.km === b * 2) rec.kmBase = b; }
       if (!rec.salida || !rec.llegada) return toast('Completá hora de salida y de llegada');
     } else if (!U.SIN_TRABAJO.includes(tipo)) {
       Object.assign(rec, { inicio: val('dIni'), fin: val('dFin') });
@@ -423,10 +446,11 @@
     for (let s = t.desde; s <= fin; s = U.addDays(s, 1)) {
       const old = await DB.get('days', s);
       if (old && old.tipo !== 'normal') continue; // no pisamos lo que ya cargaste a mano
-      const tipo = s === t.desde ? 'viaje' : (s === fin ? 'regreso' : 'otra');
+      const tipo = t.desde === fin ? 'idavuelta' : s === t.desde ? 'viaje' : (s === fin ? 'regreso' : 'otra');
       const rec = { date: s, tipo, localidad: t.localidad, cliente: t.cliente || '', tripId: id, obs: old ? old.obs || '' : '', updated: Date.now() };
       if (tipo === 'otra') Object.assign(rec, { inicio: S.cfg.inicio, fin: S.cfg.fin });
-      else Object.assign(rec, { km: cl ? cl.km : null, salida: tipo === 'viaje' ? S.cfg.inicio : '', llegada: tipo === 'viaje' && t.desde === fin ? '' : (tipo === 'viaje' ? S.cfg.fin : '') });
+      else if (tipo === 'idavuelta') Object.assign(rec, { km: cl && cl.km != null ? cl.km * 2 : null, kmBase: cl ? cl.km : null, salida: S.cfg.inicio, llegada: '' });
+      else Object.assign(rec, { km: cl ? cl.km : null, salida: tipo === 'viaje' ? S.cfg.inicio : '', llegada: tipo === 'viaje' ? S.cfg.fin : '' });
       await DB.put('days', rec);
       n++;
     }
@@ -550,13 +574,13 @@
     let extra = 0, km = 0, trab = 0;
     const svcBy = {}; for (const v of svcs) (svcBy[v.fecha] = svcBy[v.fecha] || []).push(v);
     const rows = P.days.map(s => XL.resolveDay(s, dm[s], S.cfg, S.fillMissing, svcBy[s]));
-    for (const r of rows) { extra += r.extra; if (r.inicio) trab++; if (r.viaje === 'SI' && r.km) km += r.km * 2; }
+    for (const r of rows) { extra += r.extra; if (r.inicio) trab++; if (r.viaje === 'SI' && r.km) km += r.km; }
     const sinCargar = P.days.filter(s => !dm[s] && !U.isWeekend(s));
     const pendFotos = photos.filter(p => !p.synced).length;
     const sinFoto = svcs.filter(v => !photos.some(p => p.refId === v.id)).length;
     let h = `<div class="daynav"><button data-act="perPrev">‹</button><div class="d"><b>${P.mesFin} ${P.year}</b><span class="mute small">del ${U.ddmmyy(P.start)} al ${U.ddmmyy(P.end)}</span></div><button data-act="perNext">›</button></div>
       <div class="kpis"><div class="kpi"><b>${trab}</b><span>días trabajados</span></div><div class="kpi"><b>${U.fmtHs(extra)}</b><span>hs extra</span></div><div class="kpi"><b>${trs.length}</b><span>viajes</span></div>
-      <div class="kpi"><b>${svcs.length}</b><span>services</span></div><div class="kpi"><b>${km}</b><span>km (ida y vuelta)</span></div><div class="kpi"><b>${pendFotos}</b><span>fotos sin subir</span></div></div>`;
+      <div class="kpi"><b>${svcs.length}</b><span>services</span></div><div class="kpi"><b>${km}</b><span>km recorridos</span></div><div class="kpi"><b>${pendFotos}</b><span>fotos sin subir</span></div></div>`;
     if (sinFoto) h += `<div class="banner warn">${sinFoto} orden(es) de service sin foto de la hoja firmada.</div>`;
     if (sinCargar.length) h += `<div class="card"><label style="margin:0;display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px"><input type="checkbox" id="fillMissing" style="width:22px;height:22px" ${S.fillMissing ? 'checked' : ''}>
       Completar los ${sinCargar.length} días hábiles sin cargar como jornada normal (${S.cfg.inicio} a ${S.cfg.fin})</label>
@@ -612,6 +636,7 @@
       <div class="grid2"><div><label>Sector</label><input id="cSec" value="${E(c.sector)}"></div><div><label>Sucursal</label><input id="cSuc" value="${E(c.sucursal)}"></div>
       <div><label>Jornada desde</label><input type="time" id="cIni" value="${E(c.inicio)}"></div><div><label>Jornada hasta</label><input type="time" id="cFin" value="${E(c.fin)}"></div>
       <div><label>Día de cierre del período</label><input inputmode="numeric" id="cCie" value="${E(c.cierre)}"></div><div><label>Sigla sucursal (archivo)</label><input id="cSig" value="${E(c.sucursalCorta)}"></div></div>
+      <label>Mail para enviar los archivos</label><input type="email" id="cMail" value="${E(c.mailTo || '')}" placeholder="servicebb@pharmacorp.com.ar">
       <label style="display:flex;gap:10px;align-items:center;color:var(--ink)"><input type="checkbox" id="cPre" style="width:22px;height:22px" ${c.prefijoExtra ? 'checked' : ''}> Anteponer "X hs extra:" en observaciones</label>
       <div class="btns"><button class="btn pri" data-act="saveCfg">Guardar ajustes</button><button class="btn" data-act="checkFeriados">📅 Buscar feriados nacionales ahora</button></div></div>`;
     h += `<h2>Respaldo en Google Drive</h2><div class="card">
@@ -621,7 +646,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v5 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v6 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
@@ -636,6 +661,13 @@
     if (!S.cfg.driveToken) { S.cfg.driveToken = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, '0')).join(''); saveCfg(); }
     const code = Drive.scriptCode(S.cfg.driveToken, S.cfg.driveRoot);
     openSheet('Configurar Google Drive', `
+      ${Drive.configured(S.cfg) ? `<div class="banner ok"><b>¿Ya lo tenías configurado y querés mandar mails desde la app?</b> Hay que actualizar el script una vez:
+        <ol style="padding-left:20px;margin:6px 0">
+          <li>Entrá a <b>script.google.com</b> y abrí tu proyecto de Pharmapp.</li>
+          <li>Borrá todo el código, pegá el de abajo (botón Copiar) y guardá 💾.</li>
+          <li><b>Implementar → Gestionar implementaciones → ✏️ editar</b>. En "Versión" elegí <b>Nueva versión</b> y tocá <b>Implementar</b>.</li>
+          <li>Google te va a pedir permiso para <b>enviar correo en tu nombre</b>: aceptalo (si dice "Google no verificó esta app": Configuración avanzada → Ir a … → Permitir).</li></ol>
+        La URL no cambia, no hay que tocar nada más acá.</div>` : ''}
       <div class="mute">Se hace una sola vez, mejor desde la compu:</div>
       <ol style="padding-left:20px;margin:8px 0">
         <li>Entrá a <b>script.google.com</b> con tu cuenta de Google y tocá <b>Nuevo proyecto</b>.</li>
@@ -812,6 +844,19 @@
     },
     fileDownload: () => { downloadBlob(lastFile.blob, lastFile.filename); },
     fileShare: async () => { try { await navigator.share({ files: [new File([lastFile.blob], lastFile.filename, { type: lastFile.blob.type })], title: lastFile.filename }); } catch (e) { /* cancelado */ } },
+    fileMail: async () => {
+      const to = S.cfg.mailTo;
+      if (!Drive.configured(S.cfg)) return toast('Para mandar mails primero conectá Google Drive (Más → Configurar Drive).', 5000);
+      if (!navigator.onLine) return toast('No hay internet. Probá de nuevo cuando tengas señal.', 4000);
+      if (!ask(`¿Mandar "${lastFile.filename}" a ${to}?`)) return;
+      const nombre = lastFile.filename.replace(/\.[^.]+$/, '');
+      try {
+        toast('Enviando mail…', 20000);
+        await Drive.sendMail(S.cfg, to, `${nombre}${S.cfg.empleado ? ' – ' + S.cfg.empleado : ''}`,
+          `Hola, envío adjunto: ${lastFile.filename}\n\n${S.cfg.empleado || ''}\n(Enviado desde Pharmapp)`, lastFile.filename, lastFile.blob);
+        toast('✅ Mail enviado a ' + to, 4000);
+      } catch (e) { toast('No se pudo enviar: ' + e.message, 7000); }
+    },
     fileDrive: async () => { try { toast('Subiendo…'); await Drive.upload(S.cfg, lastFile.driveFolder, lastFile.filename, lastFile.blob, true); toast('✅ Guardado en Drive: Pharmapp/' + lastFile.driveFolder, 4000); } catch (e) { toast('Error: ' + e.message, 5000); } },
     editClient: el => clientForm(el.dataset.id),
     saveClient: async el => {
@@ -823,7 +868,7 @@
     delClient: async el => { if (ask('¿Borrar esta localidad?')) { await DB.del('clients', el.dataset.id); closeSheet(); render(); } },
     saveCfg: async () => {
       Object.assign(S.cfg, { empleado: val('cEmp'), sector: val('cSec'), sucursal: val('cSuc'), inicio: val('cIni') || '08:00', fin: val('cFin') || '16:00',
-        cierre: Math.min(28, Math.max(1, Number(val('cCie')) || 25)), sucursalCorta: val('cSig'), prefijoExtra: $('#cPre').checked });
+        cierre: Math.min(28, Math.max(1, Number(val('cCie')) || 25)), sucursalCorta: val('cSig'), prefijoExtra: $('#cPre').checked, mailTo: val('cMail').trim() });
       await saveCfg(); toast('Ajustes guardados ✓'); render();
     },
     driveSetup,

@@ -41,6 +41,7 @@ const U = (() => {
   const TIPOS = {
     normal: { label: 'Jornada normal', css: '' },
     viaje: { label: 'Viaje de ida', corto: 'Viaje de ida', css: 'viaje', viaje: true },
+    idavuelta: { label: 'Viaje de ida y vuelta', corto: 'Ida y vuelta', css: 'viaje', viaje: true },
     regreso: { label: 'Viaje de vuelta', corto: 'Viaje de vuelta', css: 'viaje', viaje: true },
     otra: { label: 'Jornada en otra localidad', corto: 'Otra localidad', css: 'viaje', viaje: true },
     extra: { label: 'Trabajo en día libre', css: 'extra' },
@@ -51,7 +52,7 @@ const U = (() => {
     estudio: { label: 'Licencia por estudio', css: 'libre', obs: 'LICENCIA POR ESTUDIO' }
   };
   const SIN_TRABAJO = ['vacaciones', 'feriado', 'franco', 'licencia', 'estudio'];
-  const VIAJA = ['viaje', 'regreso']; // días en los que se maneja: inicio = salida, fin = llegada
+  const VIAJA = ['viaje', 'idavuelta', 'regreso']; // días en los que se maneja: inicio = salida, fin = llegada
 
   // Horario efectivo del día
   function times(rec) {

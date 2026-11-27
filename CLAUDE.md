@@ -18,10 +18,14 @@ App web instalable (PWA) para el celular de un técnico de service de MG Pharmac
 
 ## Reglas de negocio
 - Jornada normal 8 a 16. Horas extra = lo que pasa de 8 hs en día hábil + todo lo trabajado en fin de semana, feriado o día libre.
-- Tipos de día: normal, viaje (ida o ida y vuelta), otra (jornada en otra localidad), regreso, extra, vacaciones, feriado, franco, licencia, estudio (con foto del comprobante).
-- En `viaje` y `regreso` la jornada es salida → llegada (no se piden inicio/fin aparte). Solo esos dos llevan "VIAJE: SI" y km en la planilla.
+- Tipos de día: normal, viaje (ida), idavuelta (ida y vuelta en el día: km = km de la localidad × 2, guarda `kmBase`), otra (jornada en otra localidad), regreso, extra, vacaciones, feriado, franco, licencia, estudio (con foto del comprobante).
+- En `viaje`, `idavuelta` y `regreso` la jornada es salida → llegada (no se piden inicio/fin aparte). Solo esos llevan "VIAJE: SI" y km en la planilla.
 - Colores en la app: lila = viaje / otra localidad / regreso (aunque haya extra); naranja = día con horas extra.
 - Rendición: un Excel por viaje y medio de pago (VISA empresa o gasto personal). Saldo VISA al ir (E31) y al volver.
+- Km del mes = suma de los km de cada día con VIAJE SI (ida y vuelta ya trae el doble).
+- Planilla de horas: lila = viaje/otra localidad, naranja fuerte = horas extra, rosado = fin de semana/feriado/licencia. Sin firmas.
+- Lista del período (pestaña Día): columnas Services y Comprobantes (fotos de las órdenes); en rojo si hay menos fotos que services.
+- Envío por mail: botón en "Archivo listo" que manda el archivo a `cfg.mailTo` (por defecto servicebb@pharmacorp.com.ar, editable en Ajustes) vía el Apps Script (acción `mail`, MailApp). Scripts viejos responden error `accion` → la app pide actualizar el script.
 - Feriados: una vez por semana consulta api.argentinadatos.com (respaldo date.nager.at) y pide confirmación antes de marcar.
 
 ## Repo público

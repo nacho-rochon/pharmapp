@@ -33,6 +33,7 @@ const XL = (() => {
     let obs = (r.obs || '').trim();
     if (!obs && svcs && svcs.length) obs = svcs.map(v => [v.equipo, v.tareas].filter(Boolean).join(': ')).join(' / ');
     if (r.feriado && !/feriado/i.test(obs)) obs = `Feriado trabajado${r.feriadoNombre ? ' (' + r.feriadoNombre + ')' : ''}` + (obs ? '. ' + obs : '');
+    if (r.tipo === 'idavuelta') obs = `Ida y vuelta en el día${r.kmBase ? ` (${r.kmBase} km × 2 = ${r.km} km)` : ''}` + (obs ? '. ' + obs : '');
     if (r.tipo === 'regreso' && !/regreso|vuelta/i.test(obs)) obs = 'Vuelta desde ' + (r.localidad || 'viaje') + (obs ? '. ' + obs : '');
     if (r.tipo === 'otra' && !obs) obs = 'Jornada en ' + (r.localidad || 'otra localidad');
     out.obs = obs;
@@ -41,7 +42,7 @@ const XL = (() => {
 
   // Colores de la planilla
   const C = { azul: 'FF0B5CAB', azulClaro: 'FFE7F0FA', gris: 'FFF2F4F7', grisTxt: 'FF64707D', linea: 'FFD5DCE4', lila: 'FFF1E9FB',
-    naranja: 'FFFFE3C2', naranjaTxt: 'FFB35C00', libre: 'FFEEF1F4', blanco: 'FFFFFFFF' };
+    naranja: 'FFFFB45C', naranjaTxt: 'FF8A3D00', libre: 'FFFCE1EA', blanco: 'FFFFFFFF' };
   const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
   const thin = { style: 'thin', color: { argb: C.linea } };
   const border = { top: thin, left: thin, bottom: thin, right: thin };
@@ -156,17 +157,13 @@ const XL = (() => {
       if ([12, 13].includes(k)) c.numFmt = '0.##';
     }
     tot.height = 22;
-    // Referencias y firmas
+    // Referencias de colores
     const ref = ws.getRow(TR + 2);
     [['Viaje / otra localidad', C.lila], ['Horas extra', C.naranja], ['Fin de semana / feriado / licencia', C.libre]].forEach(([k, col], i) => {
       const c = ref.getCell(1 + i * 4); c.fill = fill(col); c.border = border;
       const l = ref.getCell(2 + i * 4); l.value = k; l.font = { size: 9, color: { argb: C.grisTxt } };
     });
-    const fr = ws.getRow(TR + 6);
-    fr.getCell(3).value = 'Firma empleado/a'; fr.getCell(10).value = 'Firma responsable';
-    for (const [a, b] of [[2, 6], [9, 13]]) { ws.mergeCells(TR + 5, a, TR + 5, b); ws.getRow(TR + 5).getCell(a).border = { bottom: { style: 'thin' } }; }
-    fr.getCell(3).font = fr.getCell(10).font = { size: 9, color: { argb: C.grisTxt } };
-    ws.pageSetup.printArea = `A1:${last}${TR + 6}`;
+    ws.pageSetup.printArea = `A1:${last}${TR + 2}`;
     ws.pageSetup.printTitlesRow = `${H}:${H}`;
 
     // Hoja 2: detalle de horas extra (para rendirlas)
