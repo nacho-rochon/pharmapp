@@ -45,6 +45,11 @@ function doPost(e) {
   }
 }
 
+// Ejecutar una vez desde el editor (▶ Ejecutar) para dar el permiso de mail: te manda un mail de prueba a vos.
+function probarMail() {
+  MailApp.sendEmail(Session.getEffectiveUser().getEmail(), 'Pharmapp: prueba de envío', 'Si te llegó este mail, Pharmapp ya puede mandar archivos.');
+}
+
 function getFolder(path) {
   let f = DriveApp.getRootFolder();
   path.split('/').filter(String).forEach(function (p) {
@@ -89,7 +94,7 @@ function out(o) {
       return await call(cfg, { action: 'mail', to, subject, body, name, mime: blob.type || 'application/octet-stream', data: await b64(blob) });
     } catch (e) {
       if (/accion/.test(e.message)) throw new Error('Hay que actualizar el script de Drive para poder mandar mails (Más → Ver configuración).');
-      if (/send_mail|MailApp|permiso|permission/i.test(e.message)) throw new Error('Falta darle permiso al script para mandar mails. En script.google.com elegí la función "doGet", tocá ▶ Ejecutar y aceptá los permisos (detalle en Más → Ver configuración).');
+      if (/send_mail|MailApp|permiso|permission/i.test(e.message)) throw new Error('Falta darle permiso al script para mandar mails. En script.google.com elegí la función "probarMail", tocá ▶ Ejecutar y aceptá los permisos (detalle en Más → Ver configuración).');
       throw e;
     }
   }
