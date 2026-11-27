@@ -214,7 +214,7 @@
     for (const v of allSvcs) { const c = cnt[v.fecha] = cnt[v.fecha] || { s: 0, f: 0 }; c.s++; c.f += allPh.filter(p => p.refId === v.id).length; }
     const cols = d => { const c = cnt[d]; if (!c) return '<span class="cnt">–</span><span class="cnt">–</span>';
       return `<span class="cnt">(${c.s})</span><span class="cnt${c.f < c.s ? ' bad' : ''}">(${c.f})</span>`; };
-    h += `<div class="card"><ul class="list"><li class="lhead"><div class="grow">Día</div><span class="cnt">Services</span><span class="cnt">Compro&shy;bantes</span></li>${P.days.slice().reverse().filter(d => d <= U.addDays(U.today(), 7)).map(d => `<li class="${dayClass(dm[d], d)}" data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div>${dayStatus(dm[d], d)}</div>${cols(d)}</li>`).join('')}</ul></div>`;
+    h += `<div class="card"><ul class="list"><li class="lhead"><div class="grow">Día</div><span class="cnt">Services</span><span class="cnt">Compro&shy;bantes</span></li>${P.days.slice().reverse().map(d => `<li class="${dayClass(dm[d], d)}" data-act="goDay" data-d="${d}"><div class="grow"><div class="t">${U.DIAS[U.dow(d)]} ${U.ddmm(d)}</div>${dayStatus(dm[d], d)}</div>${cols(d)}</li>`).join('')}</ul></div>`;
     return h;
   }
   async function editDay(tipo) {
@@ -646,7 +646,7 @@
       <div class="btns"><button class="btn" data-act="driveSetup">${Drive.configured(c) ? 'Ver configuración' : '⚙️ Configurar Drive'}</button></div></div>`;
     h += `<h2>Copia de seguridad</h2><div class="card"><div class="mute small">Todo se guarda en este celu. Además de Drive, podés bajar una copia de tus datos (sin fotos) o restaurarla en otro celu.</div>
       <div class="btns two"><button class="btn" data-act="exportJson">⬇️ Exportar datos</button><button class="btn" data-act="importJson">⬆️ Restaurar</button></div></div>
-      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v6 · funciona sin internet</div>`;
+      <div class="mute small" style="text-align:center;margin:16px 0">Pharmapp v7 · funciona sin internet</div>`;
     return h;
   }
   async function clientForm(id) {
